@@ -33,6 +33,24 @@ Expected output:
 ok: registry valid (2 events, 3 context fields)
 ```
 
+## Demo
+
+A larger documented example lives in `examples/demo/`.
+
+Validate it from the repository root:
+
+```bash
+go run ./cmd/openevents validate ./examples/demo
+```
+
+Expected output:
+
+```text
+ok: registry valid (3 events, 4 context fields)
+```
+
+The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI against the example registry.
+
 ## Development
 
 Run all tests:
