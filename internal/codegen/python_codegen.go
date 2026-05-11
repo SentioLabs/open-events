@@ -7,9 +7,20 @@ import (
 	"github.com/sentiolabs/open-events/internal/registry"
 )
 
+var pythonKeywords = map[string]struct{}{
+	"False": {}, "None": {}, "True": {}, "and": {}, "as": {}, "assert": {}, "async": {}, "await": {},
+	"break": {}, "class": {}, "continue": {}, "def": {}, "del": {}, "elif": {}, "else": {}, "except": {},
+	"finally": {}, "for": {}, "from": {}, "global": {}, "if": {}, "import": {}, "in": {}, "is": {},
+	"lambda": {}, "nonlocal": {}, "not": {}, "or": {}, "pass": {}, "raise": {}, "return": {}, "try": {},
+	"while": {}, "with": {}, "yield": {}, "match": {}, "case": {},
+}
+
 func renderPython(reg registry.Registry) (string, error) {
 	if reg.Package.Python == "" {
 		return "", fmt.Errorf("package.python is required")
+	}
+	if err := validatePythonFieldNames(reg); err != nil {
+		return "", err
 	}
 
 	var b strings.Builder
@@ -81,6 +92,22 @@ func renderPython(reg registry.Registry) (string, error) {
 	b.WriteString("    raise ValueError(f'unsupported event: {event_name} v{event_version}')\n")
 
 	return b.String(), nil
+}
+
+func validatePythonFieldNames(reg registry.Registry) error {
+	for _, name := range sortedFieldNames(reg.Context) {
+		if _, keyword := pythonKeywords[name]; keyword {
+			return fmt.Errorf("python generation does not support context field name %q because it is a reserved Python keyword; rename the field", name)
+		}
+	}
+	for _, event := range reg.Events {
+		for _, name := range sortedFieldNames(event.Properties) {
+			if _, keyword := pythonKeywords[name]; keyword {
+				return fmt.Errorf("python generation does not support field %q in event %q v%d because it is a reserved Python keyword; rename the field", name, event.Name, event.Version)
+			}
+		}
+	}
+	return nil
 }
 
 func pyTypeForField(field registry.Field, optional bool) string {

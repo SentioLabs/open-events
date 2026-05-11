@@ -37,7 +37,8 @@ func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 			case "python":
 				err = codegen.GeneratePython(reg, args[2])
 			default:
-				return fmt.Errorf("unsupported generation target %q", target)
+				fmt.Fprintf(errOut, "unsupported generation target %q\n", target)
+				return errGenerationFailed
 			}
 			if err != nil {
 				fmt.Fprintln(errOut, err)

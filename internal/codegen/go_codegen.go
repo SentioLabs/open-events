@@ -22,7 +22,10 @@ func renderGo(reg registry.Registry) (string, error) {
 	b.WriteString("\tVersion string `json:\"version\"`\n")
 	b.WriteString("}\n\n")
 
-	enums := collectEnums(reg)
+	enums, err := collectEnums(reg)
+	if err != nil {
+		return "", err
+	}
 	for _, enum := range enums {
 		b.WriteString("type " + enum.typeName + " string\n\n")
 		b.WriteString("const (\n")
@@ -80,22 +83,40 @@ type enumDef struct {
 	values   []string
 }
 
-func collectEnums(reg registry.Registry) []enumDef {
-	enumsByType := map[string][]string{}
-	for name, field := range reg.Context {
-		if field.Type == registry.FieldTypeEnum {
-			typeName := exportedName(name)
-			enumsByType[typeName] = append([]string(nil), field.Values...)
+func collectEnums(reg registry.Registry) ([]enumDef, error) {
+	enumsByType := map[string]enumDef{}
+	enumPathByType := map[string]string{}
+
+	for _, name := range sortedFieldNames(reg.Context) {
+		field := reg.Context[name]
+		if field.Type != registry.FieldTypeEnum {
+			continue
 		}
+		typeName := exportedName(name)
+		fieldPath := "context." + name
+		if firstPath, exists := enumPathByType[typeName]; exists {
+			return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
+		}
+		enumPathByType[typeName] = fieldPath
+		enumsByType[typeName] = enumDef{typeName: typeName, values: append([]string(nil), field.Values...)}
 	}
+
 	for _, event := range reg.Events {
-		for name, field := range event.Properties {
-			if field.Type == registry.FieldTypeEnum {
-				typeName := exportedName(name)
-				enumsByType[typeName] = append([]string(nil), field.Values...)
+		for _, name := range sortedFieldNames(event.Properties) {
+			field := event.Properties[name]
+			if field.Type != registry.FieldTypeEnum {
+				continue
 			}
+			typeName := exportedName(name)
+			fieldPath := fmt.Sprintf("events[%s.v%d].properties.%s", event.Name, event.Version, name)
+			if firstPath, exists := enumPathByType[typeName]; exists {
+				return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
+			}
+			enumPathByType[typeName] = fieldPath
+			enumsByType[typeName] = enumDef{typeName: typeName, values: append([]string(nil), field.Values...)}
 		}
 	}
+
 	typeNames := make([]string, 0, len(enumsByType))
 	for typeName := range enumsByType {
 		typeNames = append(typeNames, typeName)
@@ -103,9 +124,9 @@ func collectEnums(reg registry.Registry) []enumDef {
 	sort.Strings(typeNames)
 	out := make([]enumDef, 0, len(typeNames))
 	for _, typeName := range typeNames {
-		out = append(out, enumDef{typeName: typeName, values: enumsByType[typeName]})
+		out = append(out, enumsByType[typeName])
 	}
-	return out
+	return out, nil
 }
 
 func goTypeForField(typePrefix string, field registry.Field, optional bool) string {

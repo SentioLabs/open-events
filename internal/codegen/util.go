@@ -12,6 +12,7 @@ import (
 )
 
 var nonAlphaNum = regexp.MustCompile(`[^a-zA-Z0-9]+`)
+var goIdentifierPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 func ensureDir(dir string) error {
 	return os.MkdirAll(dir, 0o755)
@@ -25,7 +26,11 @@ func goPackageName(modulePath string) (string, error) {
 	if modulePath == "" {
 		return "", fmt.Errorf("package.go is required")
 	}
-	return path.Base(modulePath), nil
+	pkg := path.Base(modulePath)
+	if !goIdentifierPattern.MatchString(pkg) {
+		return "", fmt.Errorf("package.go basename %q is not a valid Go package identifier; use letters, digits, and underscores only", pkg)
+	}
+	return pkg, nil
 }
 
 func splitDotPath(pkg string) []string {
