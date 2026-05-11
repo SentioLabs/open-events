@@ -60,6 +60,27 @@ func TestRenderGoEnumOutputDeterministicBySortedFieldNames(t *testing.T) {
 	}
 }
 
+func TestRenderGoRejectsCollidingEnumConstantNames(t *testing.T) {
+	reg := registry.Registry{
+		Package: registry.PackageConfig{Go: "github.com/acme/events"},
+		Context: map[string]registry.Field{
+			"status": {
+				Name:   "status",
+				Type:   registry.FieldTypeEnum,
+				Values: []string{"foo-bar", "foo_bar"},
+			},
+		},
+	}
+
+	_, err := renderGo(reg)
+	if err == nil {
+		t.Fatalf("renderGo() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "context.status") || !strings.Contains(err.Error(), "StatusFooBar") {
+		t.Fatalf("renderGo() error = %q, want enum path and generated constant name", err)
+	}
+}
+
 func TestRenderGoEscapesEnumStringValues(t *testing.T) {
 	reg := registry.Registry{
 		Package: registry.PackageConfig{Go: "github.com/acme/events"},

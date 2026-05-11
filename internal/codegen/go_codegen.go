@@ -84,6 +84,18 @@ type enumDef struct {
 	values   []string
 }
 
+func validateEnumConstantNames(typeName, fieldPath string, values []string) error {
+	valueByConstName := map[string]string{}
+	for _, value := range values {
+		constName := typeName + exportedName(value)
+		if firstValue, exists := valueByConstName[constName]; exists {
+			return fmt.Errorf("enum constant name collision for type %q at %s: values %q and %q both generate %q; rename one enum value to avoid generated Go constant conflicts", typeName, fieldPath, firstValue, value, constName)
+		}
+		valueByConstName[constName] = value
+	}
+	return nil
+}
+
 func collectEnums(reg registry.Registry) ([]enumDef, error) {
 	enumsByType := map[string]enumDef{}
 	enumPathByType := map[string]string{}
@@ -97,6 +109,9 @@ func collectEnums(reg registry.Registry) ([]enumDef, error) {
 		fieldPath := "context." + name
 		if firstPath, exists := enumPathByType[typeName]; exists {
 			return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
+		}
+		if err := validateEnumConstantNames(typeName, fieldPath, field.Values); err != nil {
+			return nil, err
 		}
 		enumPathByType[typeName] = fieldPath
 		enumsByType[typeName] = enumDef{typeName: typeName, values: append([]string(nil), field.Values...)}
@@ -112,6 +127,9 @@ func collectEnums(reg registry.Registry) ([]enumDef, error) {
 			fieldPath := fmt.Sprintf("events[%s.v%d].properties.%s", event.Name, event.Version, name)
 			if firstPath, exists := enumPathByType[typeName]; exists {
 				return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
+			}
+			if err := validateEnumConstantNames(typeName, fieldPath, field.Values); err != nil {
+				return nil, err
 			}
 			enumPathByType[typeName] = fieldPath
 			enumsByType[typeName] = enumDef{typeName: typeName, values: append([]string(nil), field.Values...)}
