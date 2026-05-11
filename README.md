@@ -49,7 +49,14 @@ Expected output:
 ok: registry valid (3 events, 4 context fields)
 ```
 
-The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI against the example registry.
+Generate demo code from the repository root:
+
+```bash
+go run ./cmd/openevents generate go ./examples/demo <output-dir>
+go run ./cmd/openevents generate python ./examples/demo <output-dir>
+```
+
+The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates Go and Python code, emits JSON with generated Go types, and decodes it with generated Python types.
 
 ## Development
 
