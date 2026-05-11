@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"path"
 	"regexp"
@@ -29,6 +30,9 @@ func goPackageName(modulePath string) (string, error) {
 	pkg := path.Base(modulePath)
 	if !goIdentifierPattern.MatchString(pkg) {
 		return "", fmt.Errorf("package.go basename %q is not a valid Go package identifier; use letters, digits, and underscores only", pkg)
+	}
+	if token.Lookup(pkg).IsKeyword() {
+		return "", fmt.Errorf("package.go basename %q is a Go keyword and cannot be used as a package name", pkg)
 	}
 	return pkg, nil
 }

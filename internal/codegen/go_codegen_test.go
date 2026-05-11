@@ -59,3 +59,31 @@ func TestRenderGoEnumOutputDeterministicBySortedFieldNames(t *testing.T) {
 		t.Fatalf("renderGo() enum type order is not deterministic/sorted")
 	}
 }
+
+func TestRenderGoEscapesEnumStringValues(t *testing.T) {
+	reg := registry.Registry{
+		Package: registry.PackageConfig{Go: "github.com/acme/events"},
+		Context: map[string]registry.Field{
+			"status": {
+				Name:   "status",
+				Type:   registry.FieldTypeEnum,
+				Values: []string{"quote\"value", "path\\value", "line\nbreak"},
+			},
+		},
+	}
+
+	got, err := renderGo(reg)
+	if err != nil {
+		t.Fatalf("renderGo() error = %v, want nil", err)
+	}
+
+	for _, expected := range []string{
+		"StatusQuoteValue Status = \"quote\\\"value\"",
+		"StatusPathValue Status = \"path\\\\value\"",
+		"StatusLineBreak Status = \"line\\nbreak\"",
+	} {
+		if !strings.Contains(got, expected) {
+			t.Fatalf("renderGo() output missing escaped enum literal %q in:\n%s", expected, got)
+		}
+	}
+}

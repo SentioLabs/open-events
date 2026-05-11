@@ -3,6 +3,7 @@ package codegen
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/sentiolabs/open-events/internal/registry"
@@ -30,7 +31,7 @@ func renderGo(reg registry.Registry) (string, error) {
 		b.WriteString("type " + enum.typeName + " string\n\n")
 		b.WriteString("const (\n")
 		for _, value := range enum.values {
-			b.WriteString("\t" + enum.typeName + exportedName(value) + " " + enum.typeName + " = \"" + value + "\"\n")
+			b.WriteString("\t" + enum.typeName + exportedName(value) + " " + enum.typeName + " = " + strconv.Quote(value) + "\n")
 		}
 		b.WriteString(")\n\n")
 	}
