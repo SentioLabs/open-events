@@ -99,14 +99,21 @@ func validateEnumConstantNames(typeName, fieldPath string, values []string) erro
 func collectEnums(reg registry.Registry) ([]enumDef, error) {
 	enumsByType := map[string]enumDef{}
 	enumPathByType := map[string]string{}
+	identPathByName := collectGoTopLevelIdentifiers(reg)
 
 	for _, name := range sortedFieldNames(reg.Context) {
 		field := reg.Context[name]
+		fieldPath := "context." + name
+		if err := validateNoNestedEnums(field, fieldPath); err != nil {
+			return nil, err
+		}
 		if field.Type != registry.FieldTypeEnum {
 			continue
 		}
 		typeName := exportedName(name)
-		fieldPath := "context." + name
+		if firstPath, exists := identPathByName[typeName]; exists {
+			return nil, fmt.Errorf("enum type name collision for %q at %s with generated identifier %s; rename the enum field to avoid generated Go type conflicts", typeName, fieldPath, firstPath)
+		}
 		if firstPath, exists := enumPathByType[typeName]; exists {
 			return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
 		}
@@ -120,11 +127,17 @@ func collectEnums(reg registry.Registry) ([]enumDef, error) {
 	for _, event := range reg.Events {
 		for _, name := range sortedFieldNames(event.Properties) {
 			field := event.Properties[name]
+			fieldPath := fmt.Sprintf("events[%s.v%d].properties.%s", event.Name, event.Version, name)
+			if err := validateNoNestedEnums(field, fieldPath); err != nil {
+				return nil, err
+			}
 			if field.Type != registry.FieldTypeEnum {
 				continue
 			}
 			typeName := exportedName(name)
-			fieldPath := fmt.Sprintf("events[%s.v%d].properties.%s", event.Name, event.Version, name)
+			if firstPath, exists := identPathByName[typeName]; exists {
+				return nil, fmt.Errorf("enum type name collision for %q at %s with generated identifier %s; rename the enum field to avoid generated Go type conflicts", typeName, fieldPath, firstPath)
+			}
 			if firstPath, exists := enumPathByType[typeName]; exists {
 				return nil, fmt.Errorf("enum type name collision for %q between %s and %s; rename one field to avoid generated Go type conflicts", typeName, firstPath, fieldPath)
 			}
@@ -146,6 +159,39 @@ func collectEnums(reg registry.Registry) ([]enumDef, error) {
 		out = append(out, enumsByType[typeName])
 	}
 	return out, nil
+}
+
+func collectGoTopLevelIdentifiers(reg registry.Registry) map[string]string {
+	identifiers := map[string]string{
+		"Client":   "type Client",
+		"Context":  "type Context",
+		"Envelope": "type Envelope",
+	}
+	for _, event := range reg.Events {
+		eventName := exportedName(event.Name) + "V" + fmt.Sprintf("%d", event.Version)
+		eventPath := fmt.Sprintf("events[%s.v%d]", event.Name, event.Version)
+		identifiers[eventName] = eventPath + " type alias"
+		identifiers[eventName+"Properties"] = eventPath + " properties type"
+		identifiers["New"+eventName] = eventPath + " constructor"
+	}
+	return identifiers
+}
+
+func validateNoNestedEnums(field registry.Field, fieldPath string) error {
+	if field.Type == registry.FieldTypeArray && field.Items != nil {
+		if field.Items.Type == registry.FieldTypeEnum {
+			return fmt.Errorf("unsupported enum field at %s.items: Go codegen only supports top-level enum fields in context/properties", fieldPath)
+		}
+		return validateNoNestedEnums(*field.Items, fieldPath+".items")
+	}
+	if field.Type == registry.FieldTypeObject {
+		for _, name := range sortedFieldNames(field.Properties) {
+			if err := validateNoNestedEnums(field.Properties[name], fieldPath+".properties."+name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func goTypeForField(typePrefix string, field registry.Field, optional bool) string {

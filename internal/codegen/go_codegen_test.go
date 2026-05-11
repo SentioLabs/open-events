@@ -108,3 +108,61 @@ func TestRenderGoEscapesEnumStringValues(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderGoRejectsEnumTypeNameCollisionWithTopLevelClient(t *testing.T) {
+	reg := registry.Registry{
+		Package: registry.PackageConfig{Go: "github.com/acme/events"},
+		Context: map[string]registry.Field{
+			"client": {Name: "client", Type: registry.FieldTypeEnum, Values: []string{"web"}},
+		},
+	}
+
+	_, err := renderGo(reg)
+	if err == nil {
+		t.Fatalf("renderGo() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "context.client") || !strings.Contains(err.Error(), "Client") {
+		t.Fatalf("renderGo() error = %q, want collision error with path and type name", err)
+	}
+}
+
+func TestRenderGoRejectsEnumTypeNameCollisionWithGeneratedEventAlias(t *testing.T) {
+	reg := registry.Registry{
+		Package: registry.PackageConfig{Go: "github.com/acme/events"},
+		Context: map[string]registry.Field{
+			"order-created-v1": {Name: "order-created-v1", Type: registry.FieldTypeEnum, Values: []string{"a"}},
+		},
+		Events: []registry.Event{
+			{Name: "order.created", Version: 1},
+		},
+	}
+
+	_, err := renderGo(reg)
+	if err == nil {
+		t.Fatalf("renderGo() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "context.order-created-v1") || !strings.Contains(err.Error(), "OrderCreatedV1") {
+		t.Fatalf("renderGo() error = %q, want collision error with event generated type", err)
+	}
+}
+
+func TestRenderGoRejectsArrayOfEnumFields(t *testing.T) {
+	reg := registry.Registry{
+		Package: registry.PackageConfig{Go: "github.com/acme/events"},
+		Context: map[string]registry.Field{
+			"tags": {
+				Name:  "tags",
+				Type:  registry.FieldTypeArray,
+				Items: &registry.Field{Type: registry.FieldTypeEnum, Values: []string{"a", "b"}},
+			},
+		},
+	}
+
+	_, err := renderGo(reg)
+	if err == nil {
+		t.Fatalf("renderGo() error = nil, want non-nil")
+	}
+	if !strings.Contains(err.Error(), "context.tags.items") || !strings.Contains(err.Error(), "enum") {
+		t.Fatalf("renderGo() error = %q, want actionable nested enum error", err)
+	}
+}
