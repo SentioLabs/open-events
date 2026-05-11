@@ -3,6 +3,7 @@ package registry
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -116,6 +117,11 @@ func decodeYAMLFile(path string) (registryYAML, Diagnostics) {
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&out); err != nil {
 		return registryYAML{}, Diagnostics{{Location: path, Message: err.Error()}}
+	}
+
+	var trailing registryYAML
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return registryYAML{}, Diagnostics{{Location: path, Message: "additional YAML documents are not supported"}}
 	}
 
 	return out, nil
@@ -254,8 +260,8 @@ func mergeRegistry(dst *Registry, src Registry, sourcePath string) Diagnostics {
 		}
 		if *field != *next {
 			diags = append(diags, Diagnostic{
-				Location: sourcePath,
-				Message:  fmt.Sprintf("%s: conflicting value %q; already set to %q", fieldName, *next, *field),
+				Location: fmt.Sprintf("%s: %s", sourcePath, fieldName),
+				Message:  fmt.Sprintf("conflicting value %q; already set to %q", *next, *field),
 			})
 		}
 	}
