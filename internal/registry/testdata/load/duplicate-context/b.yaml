@@ -1,0 +1,8 @@
+openevents: 0.1.0
+namespace: com.example.product
+
+context:
+  tenant_id:
+    type: string
+    required: false
+    pii: pseudonymous
