@@ -26,13 +26,13 @@ go run ./cmd/openevents lock update ./examples/demo
 
 ## Protobuf rendering (`generate proto` is a pure renderer)
 
-Render protobuf + Buf config scaffolding to an output directory:
+Render protobuf + Buf config scaffolding to an ignored output directory:
 
 ```bash
-go run ./cmd/openevents generate proto ./examples/demo ./build/demo-proto
+go run ./cmd/openevents generate proto ./examples/demo ./_build/demo-proto
 ```
 
-`generate proto` does not run Buf or compile language code. It only renders deterministic protobuf backend inputs.
+`generate proto` does not run Buf or compile language code. It only renders deterministic protobuf backend inputs. The `_build/` directory is ignored by Git and skipped by `go test ./...`.
 
 ## Buf lint/build/generate
 
@@ -40,12 +40,12 @@ Install local Buf tooling and run checks/generation:
 
 ```bash
 bash scripts/install-buf.sh
-.tools/bin/buf lint ./build/demo-proto
-.tools/bin/buf build ./build/demo-proto
-(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
+.tools/bin/buf lint ./_build/demo-proto
+.tools/bin/buf build ./_build/demo-proto
+(cd ./_build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
 
-## Expected output tree under `./build/demo-proto`
+## Expected output tree under `./_build/demo-proto`
 
 After `generate proto`:
 
@@ -66,14 +66,14 @@ In CI, verify the same workflow from repository root:
 ```bash
 go run ./cmd/openevents validate ./examples/demo
 go run ./cmd/openevents lock check ./examples/demo
-go run ./cmd/openevents generate proto ./examples/demo ./build/demo-proto
+go run ./cmd/openevents generate proto ./examples/demo ./_build/demo-proto
 bash scripts/install-buf.sh
-.tools/bin/buf lint ./build/demo-proto
-.tools/bin/buf build ./build/demo-proto
-(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
+.tools/bin/buf lint ./_build/demo-proto
+.tools/bin/buf build ./_build/demo-proto
+(cd ./_build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
 
-Keep generated output under ignored build directories (for example `build/`) instead of committing generated language artifacts.
+Keep generated output under ignored, Go-skipped build directories (for example `_build/`) instead of committing generated language artifacts.
 
 ## Deprecated direct generators
 

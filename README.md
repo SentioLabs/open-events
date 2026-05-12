@@ -71,22 +71,25 @@ Install Buf locally through the repo script:
 bash scripts/install-buf.sh
 ```
 
-Validate the demo registry and generate protobuf output:
+Validate the demo registry and committed lock, then generate protobuf output:
 
 ```bash
 go run ./cmd/openevents validate ./examples/demo
-go run ./cmd/openevents lock update ./examples/demo
 go run ./cmd/openevents lock check ./examples/demo
-go run ./cmd/openevents generate proto ./examples/demo ./build/demo-proto
+go run ./cmd/openevents generate proto ./examples/demo ./_build/demo-proto
 ```
+
+Use `go run ./cmd/openevents lock update ./examples/demo` only after an approved schema change.
 
 Run Buf against the generated output:
 
 ```bash
-.tools/bin/buf lint ./build/demo-proto
-.tools/bin/buf build ./build/demo-proto
-(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
+.tools/bin/buf lint ./_build/demo-proto
+.tools/bin/buf build ./_build/demo-proto
+(cd ./_build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
+
+The `_build/` directory is ignored by Git and skipped by `go test ./...`.
 
 The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates Go and Python code, emits JSON with generated Go types, and decodes it with generated Python types.
 
