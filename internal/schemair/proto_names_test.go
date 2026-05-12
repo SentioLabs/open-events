@@ -220,3 +220,55 @@ func TestEnumValueNameRejectsUnspecifiedCollision(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateEventNameRejectsEmptySegments(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventName string
+		want      string
+	}{
+		{name: "double dot separator", eventName: "checkout..completed", want: "empty segment"},
+		{name: "trailing dot", eventName: "checkout.", want: "empty segment"},
+		{name: "leading dot", eventName: ".checkout", want: "must start with a letter"},
+		{name: "double underscore", eventName: "checkout__completed", want: "empty segment"},
+		{name: "double hyphen", eventName: "checkout--completed", want: "empty segment"},
+		{name: "mixed separators creating empty", eventName: "checkout.-completed", want: "empty segment"},
+		{name: "mixed separators underscore dot", eventName: "checkout_.completed", want: "empty segment"},
+		{name: "trailing underscore", eventName: "checkout_", want: "empty segment"},
+		{name: "trailing hyphen", eventName: "checkout-", want: "empty segment"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateEventName(tt.eventName)
+			if err == nil {
+				t.Fatalf("validateEventName(%q) error = nil, want error", tt.eventName)
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(tt.want)) {
+				t.Fatalf("validateEventName(%q) error = %q, want substring %q", tt.eventName, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateEventNameAcceptsValidNames(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventName string
+	}{
+		{name: "simple dot separated", eventName: "checkout.completed"},
+		{name: "underscore separated", eventName: "checkout_completed"},
+		{name: "hyphen separated", eventName: "checkout-completed"},
+		{name: "mixed separators valid", eventName: "checkout.item_added"},
+		{name: "multiple segments", eventName: "user.account.created"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateEventName(tt.eventName)
+			if err != nil {
+				t.Fatalf("validateEventName(%q) error = %v, want nil", tt.eventName, err)
+			}
+		})
+	}
+}

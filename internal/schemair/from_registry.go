@@ -131,8 +131,9 @@ func clientMessage() Message {
 
 func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message, error) {
 	message := Message{Name: "Context", Fields: make([]Field, 0, len(context)), Enums: []Enum{}}
-	usedNumbers := make(map[int]string)      // map[protoNumber]fieldName for duplicate detection
-	enumTypeNames := make(map[string]string) // map[enumTypeName]fieldName for collision detection
+	usedNumbers := make(map[int]string)       // map[protoNumber]fieldName for duplicate detection
+	enumTypeNames := make(map[string]string)  // map[enumTypeName]fieldName for collision detection
+	enumValueNames := make(map[string]string) // map[renderedValueName]source for value collision detection
 
 	for _, name := range sortedRegistryFieldNames(context) {
 		field := context[name]
@@ -174,6 +175,23 @@ func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message,
 				return Message{}, fmt.Errorf("context enum type name collision: fields %q and %q both generate enum type %q", existing, name, enum.Name)
 			}
 			enumTypeNames[enum.Name] = name
+
+			// Check for enum value name collisions across all enums in this message
+			// Reserve the synthesized zero value name
+			zeroValueName := enumZeroValueName(enum.Name)
+			if existing, exists := enumValueNames[zeroValueName]; exists {
+				return Message{}, fmt.Errorf("context enum value collision: field %q zero value %q conflicts with %s", name, zeroValueName, existing)
+			}
+			enumValueNames[zeroValueName] = fmt.Sprintf("field %q zero value", name)
+
+			// Reserve all authored value names
+			for _, val := range enum.Values {
+				if existing, exists := enumValueNames[val.Name]; exists {
+					return Message{}, fmt.Errorf("context enum value collision: field %q value %q (from %q) conflicts with %s", name, val.Name, val.Original, existing)
+				}
+				enumValueNames[val.Name] = fmt.Sprintf("field %q value %q", name, val.Original)
+			}
+
 			message.Enums = append(message.Enums, *enum)
 		}
 	}
@@ -188,8 +206,9 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 	}
 
 	message := Message{Name: PropertiesMessageName(event), Fields: make([]Field, 0, len(event.Properties)), Enums: []Enum{}}
-	usedNumbers := make(map[int]string)      // map[protoNumber]fieldName for duplicate detection
-	enumTypeNames := make(map[string]string) // map[enumTypeName]fieldName for collision detection
+	usedNumbers := make(map[int]string)       // map[protoNumber]fieldName for duplicate detection
+	enumTypeNames := make(map[string]string)  // map[enumTypeName]fieldName for collision detection
+	enumValueNames := make(map[string]string) // map[renderedValueName]source for value collision detection
 
 	for _, name := range sortedRegistryFieldNames(event.Properties) {
 		field := event.Properties[name]
@@ -231,6 +250,23 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 				return Message{}, fmt.Errorf("events.%s.properties enum type name collision: fields %q and %q both generate enum type %q", key, existing, name, enum.Name)
 			}
 			enumTypeNames[enum.Name] = name
+
+			// Check for enum value name collisions across all enums in this message
+			// Reserve the synthesized zero value name
+			zeroValueName := enumZeroValueName(enum.Name)
+			if existing, exists := enumValueNames[zeroValueName]; exists {
+				return Message{}, fmt.Errorf("events.%s.properties enum value collision: field %q zero value %q conflicts with %s", key, name, zeroValueName, existing)
+			}
+			enumValueNames[zeroValueName] = fmt.Sprintf("field %q zero value", name)
+
+			// Reserve all authored value names
+			for _, val := range enum.Values {
+				if existing, exists := enumValueNames[val.Name]; exists {
+					return Message{}, fmt.Errorf("events.%s.properties enum value collision: field %q value %q (from %q) conflicts with %s", key, name, val.Name, val.Original, existing)
+				}
+				enumValueNames[val.Name] = fmt.Sprintf("field %q value %q", name, val.Original)
+			}
+
 			message.Enums = append(message.Enums, *enum)
 		}
 	}
@@ -368,7 +404,7 @@ func validateLockForLowering(reg registry.Registry, lock Lock) error {
 
 func validateContextLock(reg registry.Registry, lock Lock) error {
 	// Validate all active context fields have valid lock entries
-	for name := range reg.Context {
+	for _, name := range sortedRegistryFieldNames(reg.Context) {
 		locked, ok := lock.Context[name]
 		if !ok {
 			// This is handled elsewhere with more specific error
@@ -388,7 +424,8 @@ func validateContextLock(reg registry.Registry, lock Lock) error {
 
 	// Check for duplicate proto numbers in context
 	byNumber := make(map[int]string)
-	for name, locked := range lock.Context {
+	for _, name := range sortedLockedFieldNames(lock.Context) {
+		locked := lock.Context[name]
 		if existing, exists := byNumber[locked.ProtoNumber]; exists {
 			return fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
 		}
@@ -432,7 +469,8 @@ func validateEnvelopeLock(key string, lockedEvent LockedEvent) error {
 	// Track proto numbers to detect duplicates
 	byNumber := make(map[int]string)
 
-	for name, locked := range lockedEvent.Envelope {
+	for _, name := range sortedLockedFieldNames(lockedEvent.Envelope) {
+		locked := lockedEvent.Envelope[name]
 		// Validate the envelope key is a known fixed envelope field
 		expectedNumber, ok := envelopeNumbers[name]
 		if !ok {
@@ -466,7 +504,7 @@ func validateEnvelopeLock(key string, lockedEvent LockedEvent) error {
 
 func validatePropertiesLock(event registry.Event, key string, lockedEvent LockedEvent) error {
 	// Validate all active property fields have valid lock entries
-	for name := range event.Properties {
+	for _, name := range sortedRegistryFieldNames(event.Properties) {
 		locked, ok := lockedEvent.Properties[name]
 		if !ok {
 			// This is handled elsewhere with more specific error
@@ -486,7 +524,8 @@ func validatePropertiesLock(event registry.Event, key string, lockedEvent Locked
 
 	// Check for duplicate proto numbers in properties and reserved
 	byNumber := make(map[int]string)
-	for name, locked := range lockedEvent.Properties {
+	for _, name := range sortedLockedFieldNames(lockedEvent.Properties) {
+		locked := lockedEvent.Properties[name]
 		if existing, exists := byNumber[locked.ProtoNumber]; exists {
 			return fmt.Errorf("events.%s.properties has duplicate proto number %d used by both %q and %q", key, locked.ProtoNumber, existing, name)
 		}
@@ -532,7 +571,7 @@ func validateReservedEntries(key string, lockedEvent LockedEvent) error {
 
 func validateNoStaleLockEntries(reg registry.Registry, lock Lock) error {
 	// Check for stale context entries
-	for name := range lock.Context {
+	for _, name := range sortedLockedFieldNames(lock.Context) {
 		if _, ok := reg.Context[name]; !ok {
 			return fmt.Errorf("schema lock has stale context entry %q not in registry", name)
 		}
@@ -546,14 +585,15 @@ func validateNoStaleLockEntries(reg registry.Registry, lock Lock) error {
 	}
 
 	// Check for stale event entries
-	for key, lockedEvent := range lock.Events {
+	for _, key := range sortedLockedEventKeys(lock.Events) {
+		lockedEvent := lock.Events[key]
 		event, ok := regEvents[key]
 		if !ok {
 			return fmt.Errorf("schema lock has stale event entry %q not in registry", key)
 		}
 
 		// Check for stale property entries
-		for name := range lockedEvent.Properties {
+		for _, name := range sortedLockedFieldNames(lockedEvent.Properties) {
 			if _, ok := event.Properties[name]; !ok {
 				return fmt.Errorf("schema lock has stale property entry events.%s.properties.%s not in registry", key, name)
 			}

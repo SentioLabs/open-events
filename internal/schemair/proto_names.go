@@ -105,6 +105,33 @@ func validateEventName(name string) error {
 		}
 	}
 
+	// Validate segment structure: no empty segments created by separators
+	// Split on all separator types and check each segment is non-empty
+	runes := []rune(name)
+	if len(runes) == 0 {
+		return fmt.Errorf("event name must not be empty")
+	}
+
+	// Check for leading/trailing separators
+	last := runes[len(runes)-1]
+	if last == '.' || last == '_' || last == '-' {
+		return fmt.Errorf("event name contains empty segment (trailing separator)")
+	}
+
+	// Track whether previous character was a separator
+	prevWasSeparator := false
+	for _, r := range runes {
+		isSeparator := r == '.' || r == '_' || r == '-'
+		if isSeparator {
+			if prevWasSeparator {
+				return fmt.Errorf("event name contains empty segment (consecutive separators)")
+			}
+			prevWasSeparator = true
+		} else {
+			prevWasSeparator = false
+		}
+	}
+
 	return nil
 }
 
@@ -371,6 +398,19 @@ func isValidProtoIdentifier(name string) error {
 }
 
 // isValidProtoMessageName checks if a generated message name is valid.
+// enumZeroValueName computes the synthesized zero value name for an enum type.
+// This matches the algorithm used by the protogen renderer.
+func enumZeroValueName(enumTypeName string) string {
+	parts := splitIdentifier(enumTypeName)
+	if len(parts) == 0 {
+		return "ENUM_UNSPECIFIED"
+	}
+	for i := range parts {
+		parts[i] = strings.ToUpper(parts[i])
+	}
+	return strings.Join(parts, "_") + "_UNSPECIFIED"
+}
+
 func isValidProtoMessageName(name string) error {
 	if name == "" {
 		return fmt.Errorf("message name must not be empty")
