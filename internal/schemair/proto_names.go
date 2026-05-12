@@ -31,6 +31,24 @@ var protobufKeywords = map[string]bool{
 	"group":    true,
 	"to":       true,
 	"max":      true,
+	// Protobuf scalar types
+	"double":   true,
+	"float":    true,
+	"int32":    true,
+	"int64":    true,
+	"uint32":   true,
+	"uint64":   true,
+	"sint32":   true,
+	"sint64":   true,
+	"fixed32":  true,
+	"fixed64":  true,
+	"sfixed32": true,
+	"sfixed64": true,
+	"bool":     true,
+	"string":   true,
+	"bytes":    true,
+	"true":     true,
+	"false":    true,
 }
 
 func ProtoPackage(namespace string, version int) (string, error) {
@@ -57,9 +75,6 @@ func ProtoFilePath(namespace string, version int) (string, error) {
 
 func EventMessageName(event registry.Event) string {
 	base := pascalCase(event.Name)
-	if base == "" {
-		base = "Event"
-	}
 	return fmt.Sprintf("%sV%d", base, event.Version)
 }
 
@@ -68,11 +83,7 @@ func PropertiesMessageName(event registry.Event) string {
 }
 
 func EnumTypeName(fieldName string) string {
-	name := pascalCase(fieldName)
-	if name == "" {
-		return "Enum"
-	}
-	return name
+	return pascalCase(fieldName)
 }
 
 func EnumValueName(enumName string, raw string) (string, error) {
@@ -91,13 +102,25 @@ func EnumValueName(enumName string, raw string) (string, error) {
 
 func buildEnumValues(enumName string, values []string, fieldPath string) ([]EnumValue, error) {
 	out := make([]EnumValue, 0, len(values))
-	byName := make(map[string]string, len(values))
+	byName := make(map[string]string, len(values)+1)
+
+	// Reserve the zero value name (e.g., PAYMENT_METHOD_UNSPECIFIED)
+	prefix, err := upperIdentifier(enumName)
+	if err != nil {
+		return nil, fmt.Errorf("%s: invalid enum name %q: %w", fieldPath, enumName, err)
+	}
+	reservedZeroName := prefix + "_UNSPECIFIED"
+	byName[reservedZeroName] = "<reserved zero value>"
+
 	for i, raw := range values {
 		name, err := EnumValueName(enumName, raw)
 		if err != nil {
 			return nil, fmt.Errorf("%s.values[%d]: %w", fieldPath, i, err)
 		}
 		if first, ok := byName[name]; ok {
+			if first == "<reserved zero value>" {
+				return nil, fmt.Errorf("%s.values[%d]: value %q normalizes to reserved zero value name %q", fieldPath, i, raw, name)
+			}
 			return nil, fmt.Errorf("enum values collide after normalization at %s: %q and %q both map to %q", fieldPath, first, raw, name)
 		}
 		byName[name] = raw
@@ -119,8 +142,12 @@ func namespaceParts(namespace string) ([]string, error) {
 		if raw == "" {
 			return nil, fmt.Errorf("protobuf namespace %q has an empty segment", namespace)
 		}
-		if startsWithDigit(raw) {
-			return nil, fmt.Errorf("protobuf namespace segment %q starts with a digit", raw)
+		// Check first character is a letter
+		if len(raw) > 0 {
+			first := rune(raw[0])
+			if !isASCIILetter(first) {
+				return nil, fmt.Errorf("protobuf namespace segment %q must start with a letter", raw)
+			}
 		}
 		// Check for ASCII-only and valid characters
 		for _, r := range raw {
@@ -254,18 +281,18 @@ func isProtobufKeyword(name string) bool {
 }
 
 // isValidProtoIdentifier checks if a string is a valid protobuf identifier:
-// ASCII-only, starts with letter or underscore, contains only letters/digits/underscore,
+// ASCII-only, starts with letter, contains only letters/digits/underscore,
 // and is not a reserved keyword.
 func isValidProtoIdentifier(name string) error {
 	if name == "" {
 		return fmt.Errorf("identifier must not be empty")
 	}
 
-	// Check first character
+	// Check first character is a letter
 	if len(name) > 0 {
 		first := rune(name[0])
-		if !isASCIILetter(first) && first != '_' {
-			return fmt.Errorf("identifier must start with a letter or underscore, got %q", string(first))
+		if !isASCIILetter(first) {
+			return fmt.Errorf("identifier must start with a letter, got %q", string(first))
 		}
 	}
 

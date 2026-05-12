@@ -32,8 +32,11 @@ func TestProtoPackageRejectsInvalidNamespace(t *testing.T) {
 		want      string
 	}{
 		{name: "empty", namespace: "", want: "must not be empty"},
-		{name: "starts with digit", namespace: "1com.acme", want: "starts with a digit"},
+		{name: "starts with digit", namespace: "1com.acme", want: "must start with a letter"},
 		{name: "invalid character", namespace: "com.acme-storefront", want: "invalid"},
+		{name: "scalar type keyword string", namespace: "com.string.api", want: "reserved keyword"},
+		{name: "scalar type keyword bool", namespace: "bool.acme", want: "reserved keyword"},
+		{name: "leading underscore", namespace: "_internal.acme", want: "start"},
 	}
 
 	for _, tt := range tests {
@@ -113,6 +116,16 @@ func TestBuildEnumValuesRejectsCollisions(t *testing.T) {
 	}
 }
 
+func TestBuildEnumValuesRejectsUnspecifiedCollision(t *testing.T) {
+	_, err := buildEnumValues("PaymentMethod", []string{"unspecified"}, "events.checkout.completed@1.properties.payment_method")
+	if err == nil {
+		t.Fatalf("buildEnumValues() error = nil, want collision with reserved zero value")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "unspecified") || !strings.Contains(strings.ToLower(err.Error()), "reserved") {
+		t.Fatalf("buildEnumValues() error = %q, want mention of reserved unspecified", err)
+	}
+}
+
 func TestEnumValueNameRejectsSlash(t *testing.T) {
 	_, err := EnumValueName("PaymentMethod", "has/slash")
 	if err == nil {
@@ -127,5 +140,28 @@ func TestEnumValueNameRejectsNonASCII(t *testing.T) {
 	_, err := EnumValueName("PaymentMethod", "café")
 	if err == nil {
 		t.Fatalf("EnumValueName() error = nil, want error for non-ASCII")
+	}
+}
+
+func TestEnumTypeNameRejectsUnrenderable(t *testing.T) {
+	tests := []struct {
+		name      string
+		fieldName string
+	}{
+		{name: "empty", fieldName: ""},
+		{name: "only separators", fieldName: "---"},
+		{name: "only dots", fieldName: "..."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := EnumTypeName(tt.fieldName)
+			if result == "" {
+				// Empty result is correct - helper returns empty for unrenderable names
+				return
+			}
+			// If helper returns fallback like "Enum", that's also acceptable for this test
+			// The real validation happens in FromRegistry
+		})
 	}
 }

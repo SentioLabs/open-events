@@ -61,6 +61,11 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 
 		messages := []Message{clientMessage(), context}
 		for _, event := range events {
+			// Validate event name is renderable
+			if pascalCase(event.Name) == "" {
+				return Registry{}, fmt.Errorf("event name %q cannot be rendered as a valid protobuf message name", event.Name)
+			}
+
 			// Validate and track envelope message name
 			envelopeName := EventMessageName(event)
 			if err := isValidProtoMessageName(envelopeName); err != nil {
@@ -116,7 +121,8 @@ func clientMessage() Message {
 
 func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message, error) {
 	message := Message{Name: "Context", Fields: make([]Field, 0, len(context)), Enums: []Enum{}}
-	usedNumbers := make(map[int]string) // map[protoNumber]fieldName for duplicate detection
+	usedNumbers := make(map[int]string)      // map[protoNumber]fieldName for duplicate detection
+	enumTypeNames := make(map[string]string) // map[enumTypeName]fieldName for collision detection
 
 	for _, name := range sortedRegistryFieldNames(context) {
 		field := context[name]
@@ -153,6 +159,11 @@ func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message,
 		}
 		message.Fields = append(message.Fields, lowered)
 		if enum != nil {
+			// Check for enum type name collision
+			if existing, exists := enumTypeNames[enum.Name]; exists {
+				return Message{}, fmt.Errorf("context enum type name collision: fields %q and %q both generate enum type %q", existing, name, enum.Name)
+			}
+			enumTypeNames[enum.Name] = name
 			message.Enums = append(message.Enums, *enum)
 		}
 	}
@@ -167,7 +178,8 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 	}
 
 	message := Message{Name: PropertiesMessageName(event), Fields: make([]Field, 0, len(event.Properties)), Enums: []Enum{}}
-	usedNumbers := make(map[int]string) // map[protoNumber]fieldName for duplicate detection
+	usedNumbers := make(map[int]string)      // map[protoNumber]fieldName for duplicate detection
+	enumTypeNames := make(map[string]string) // map[enumTypeName]fieldName for collision detection
 
 	for _, name := range sortedRegistryFieldNames(event.Properties) {
 		field := event.Properties[name]
@@ -204,6 +216,11 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 		}
 		message.Fields = append(message.Fields, lowered)
 		if enum != nil {
+			// Check for enum type name collision
+			if existing, exists := enumTypeNames[enum.Name]; exists {
+				return Message{}, fmt.Errorf("events.%s.properties enum type name collision: fields %q and %q both generate enum type %q", key, existing, name, enum.Name)
+			}
+			enumTypeNames[enum.Name] = name
 			message.Enums = append(message.Enums, *enum)
 		}
 	}
@@ -259,6 +276,9 @@ func lowerField(field registry.Field, number int, path string) (Field, *Enum, er
 		lowered.Optional = true
 	case registry.FieldTypeEnum:
 		enumName := EnumTypeName(field.Name)
+		if enumName == "" {
+			return Field{}, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid enum type name", path, field.Name)
+		}
 		if err := isValidProtoMessageName(enumName); err != nil {
 			return Field{}, nil, fmt.Errorf("%s: enum type name %q is invalid: %w", path, enumName, err)
 		}

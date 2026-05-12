@@ -605,3 +605,232 @@ func TestFromRegistryRejectsNoEvents(t *testing.T) {
 		t.Fatalf("FromRegistry() error = %q, want event mention", err)
 	}
 }
+
+func TestFromRegistryRejectsEmptyEventName(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{
+			{
+				Name:       "",
+				Version:    1,
+				Properties: map[string]registry.Field{},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{},
+		Events: map[string]LockedEvent{
+			"@1": {
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want error for empty event name")
+	}
+	if !strings.Contains(err.Error(), "event name") {
+		t.Fatalf("FromRegistry() error = %q, want mention of event name", err)
+	}
+}
+
+func TestFromRegistryRejectsUnrenderableEventName(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{
+			{
+				Name:       "---",
+				Version:    1,
+				Properties: map[string]registry.Field{},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{},
+		Events: map[string]LockedEvent{
+			"---@1": {
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want error for unrenderable event name")
+	}
+	if !strings.Contains(err.Error(), "event name") && !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("FromRegistry() error = %q, want mention of event name or invalid", err)
+	}
+}
+
+func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context: map[string]registry.Field{
+			"string": {
+				Name: "string",
+				Type: registry.FieldTypeString,
+			},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "test.event",
+				Version: 1,
+				Properties: map[string]registry.Field{
+					"bool": {
+						Name: "bool",
+						Type: registry.FieldTypeString,
+					},
+				},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"string": {StableID: "string", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Properties: map[string]LockedField{
+					"bool": {StableID: "bool", ProtoNumber: 1},
+				},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want error for scalar keyword field name")
+	}
+	if !strings.Contains(err.Error(), "reserved") && !strings.Contains(err.Error(), "keyword") {
+		t.Fatalf("FromRegistry() error = %q, want mention of reserved/keyword", err)
+	}
+}
+
+func TestFromRegistryRejectsContextEnumTypeNameCollision(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context: map[string]registry.Field{
+			"foo_bar": {
+				Name:   "foo_bar",
+				Type:   registry.FieldTypeEnum,
+				Values: []string{"a", "b"},
+			},
+			"foo__bar": {
+				Name:   "foo__bar",
+				Type:   registry.FieldTypeEnum,
+				Values: []string{"x", "y"},
+			},
+		},
+		Events: []registry.Event{
+			{
+				Name:       "test.event",
+				Version:    1,
+				Properties: map[string]registry.Field{},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"foo_bar":  {StableID: "foo_bar", ProtoNumber: 1},
+			"foo__bar": {StableID: "foo__bar", ProtoNumber: 2},
+		},
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want enum type collision error")
+	}
+	if !strings.Contains(err.Error(), "collision") || !strings.Contains(err.Error(), "FooBar") {
+		t.Fatalf("FromRegistry() error = %q, want collision mentioning FooBar", err)
+	}
+}
+
+func TestFromRegistryRejectsPropertiesEnumTypeNameCollision(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{
+			{
+				Name:    "test.event",
+				Version: 1,
+				Properties: map[string]registry.Field{
+					"payment_method": {
+						Name:   "payment_method",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"card", "cash"},
+					},
+					"payment__method": {
+						Name:   "payment__method",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"debit", "credit"},
+					},
+				},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{},
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Properties: map[string]LockedField{
+					"payment_method":  {StableID: "payment_method", ProtoNumber: 1},
+					"payment__method": {StableID: "payment__method", ProtoNumber: 2},
+				},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want enum type collision error")
+	}
+	if !strings.Contains(err.Error(), "collision") || !strings.Contains(err.Error(), "PaymentMethod") {
+		t.Fatalf("FromRegistry() error = %q, want collision mentioning PaymentMethod", err)
+	}
+}
+
+func TestFromRegistryRejectsLeadingUnderscoreInFieldName(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context: map[string]registry.Field{
+			"_tenant_id": {
+				Name: "_tenant_id",
+				Type: registry.FieldTypeString,
+			},
+		},
+		Events: []registry.Event{
+			{
+				Name:       "test.event",
+				Version:    1,
+				Properties: map[string]registry.Field{},
+			},
+		},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"_tenant_id": {StableID: "_tenant_id", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want error for leading underscore")
+	}
+	if !strings.Contains(err.Error(), "start") || !strings.Contains(err.Error(), "letter") {
+		t.Fatalf("FromRegistry() error = %q, want mention of start with letter", err)
+	}
+}
