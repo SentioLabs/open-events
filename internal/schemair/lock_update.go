@@ -26,24 +26,20 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		Events:  make(map[string]LockedEvent, len(reg.Events)),
 	}
 
-	usedContext := map[int]struct{}{}
 	contextMax := 0
-	for _, locked := range existing.Context {
-		if locked.ProtoNumber > 0 {
-			usedContext[locked.ProtoNumber] = struct{}{}
-			if locked.ProtoNumber > contextMax {
-				contextMax = locked.ProtoNumber
-			}
+	for _, name := range sortedLockedFieldNames(existing.Context) {
+		locked := existing.Context[name]
+		updated.Context[name] = locked
+		if locked.ProtoNumber > contextMax {
+			contextMax = locked.ProtoNumber
 		}
 	}
 
 	for _, name := range sortedFieldNames(reg.Context) {
-		if locked, ok := existing.Context[name]; ok {
-			updated.Context[name] = locked
+		if _, ok := updated.Context[name]; ok {
 			continue
 		}
 		number := nextSequentialNumber(contextMax)
-		usedContext[number] = struct{}{}
 		contextMax = number
 		updated.Context[name] = LockedField{StableID: name, ProtoNumber: number}
 	}
@@ -65,22 +61,15 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 			updatedEvent.Envelope[name] = LockedField{StableID: stableID, ProtoNumber: number}
 		}
 
-		usedProperties := map[int]struct{}{}
 		propertiesMax := 0
 		for _, locked := range existingEvent.Properties {
-			if locked.ProtoNumber > 0 {
-				usedProperties[locked.ProtoNumber] = struct{}{}
-				if locked.ProtoNumber > propertiesMax {
-					propertiesMax = locked.ProtoNumber
-				}
+			if locked.ProtoNumber > propertiesMax {
+				propertiesMax = locked.ProtoNumber
 			}
 		}
 		for _, reserved := range existingEvent.Reserved {
-			if reserved.ProtoNumber > 0 {
-				usedProperties[reserved.ProtoNumber] = struct{}{}
-				if reserved.ProtoNumber > propertiesMax {
-					propertiesMax = reserved.ProtoNumber
-				}
+			if reserved.ProtoNumber > propertiesMax {
+				propertiesMax = reserved.ProtoNumber
 			}
 		}
 
@@ -90,7 +79,6 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 				continue
 			}
 			number := nextSequentialNumber(propertiesMax)
-			usedProperties[number] = struct{}{}
 			propertiesMax = number
 			updatedEvent.Properties[name] = LockedField{StableID: name, ProtoNumber: number}
 		}
@@ -148,6 +136,12 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		}
 	}
 
+	for _, key := range sortedLockedEventKeys(lock.Events) {
+		if _, ok := expected.Events[key]; !ok {
+			return fmt.Errorf("schema lock is stale: events.%s is not in registry", key)
+		}
+	}
+
 	for _, event := range reg.Events {
 		key := eventKey(event)
 		expectedEvent, ok := expected.Events[key]
@@ -158,13 +152,19 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		if !ok {
 			return fmt.Errorf("schema lock is stale: events.%s is missing", key)
 		}
-		for name, exp := range expectedEvent.Envelope {
+		for _, name := range sortedLockedFieldNames(expectedEvent.Envelope) {
+			exp := expectedEvent.Envelope[name]
 			actual, ok := actualEvent.Envelope[name]
 			if !ok {
 				return fmt.Errorf("schema lock is stale: events.%s.envelope.%s is missing", key, name)
 			}
 			if actual.ProtoNumber != exp.ProtoNumber {
 				return fmt.Errorf("schema lock is stale: events.%s.envelope.%s number mismatch: got %d want %d", key, name, actual.ProtoNumber, exp.ProtoNumber)
+			}
+		}
+		for _, name := range sortedLockedFieldNames(actualEvent.Envelope) {
+			if _, ok := expectedEvent.Envelope[name]; !ok {
+				return fmt.Errorf("schema lock is stale: events.%s.envelope.%s is not in registry", key, name)
 			}
 		}
 		for _, name := range sortedLockedFieldNames(expectedEvent.Properties) {
@@ -175,6 +175,14 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			}
 			if actual.ProtoNumber != exp.ProtoNumber {
 				return fmt.Errorf("schema lock is stale: events.%s.properties.%s number mismatch: got %d want %d", key, name, actual.ProtoNumber, exp.ProtoNumber)
+			}
+		}
+		if err := compareReservedFields(key, actualEvent.Reserved, expectedEvent.Reserved); err != nil {
+			return err
+		}
+		for _, name := range sortedLockedFieldNames(actualEvent.Properties) {
+			if _, ok := expectedEvent.Properties[name]; !ok {
+				return fmt.Errorf("schema lock is stale: events.%s.properties.%s should be reserved", key, name)
 			}
 		}
 	}
@@ -213,6 +221,54 @@ func sortedLockedFieldNames(fields map[string]LockedField) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func sortedLockedEventKeys(events map[string]LockedEvent) []string {
+	keys := make([]string, 0, len(events))
+	for key := range events {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func compareReservedFields(eventKey string, actual []ReservedField, expected []ReservedField) error {
+	actualByNumber := make(map[int]ReservedField, len(actual))
+	for _, reserved := range actual {
+		actualByNumber[reserved.ProtoNumber] = reserved
+	}
+	expectedByNumber := make(map[int]ReservedField, len(expected))
+	for _, reserved := range expected {
+		expectedByNumber[reserved.ProtoNumber] = reserved
+	}
+
+	for _, exp := range sortedReservedFields(expected) {
+		actual, ok := actualByNumber[exp.ProtoNumber]
+		if !ok {
+			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is missing", eventKey, exp.Name)
+		}
+		if actual != exp {
+			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s mismatch", eventKey, exp.Name)
+		}
+	}
+	for _, actual := range sortedReservedFields(actual) {
+		if _, ok := expectedByNumber[actual.ProtoNumber]; !ok {
+			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is not expected", eventKey, actual.Name)
+		}
+	}
+
+	return nil
+}
+
+func sortedReservedFields(fields []ReservedField) []ReservedField {
+	sorted := append([]ReservedField(nil), fields...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].ProtoNumber == sorted[j].ProtoNumber {
+			return sorted[i].Name < sorted[j].Name
+		}
+		return sorted[i].ProtoNumber < sorted[j].ProtoNumber
+	})
+	return sorted
 }
 
 func validateLockDuplicates(lock Lock) error {

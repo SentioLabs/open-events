@@ -1,6 +1,7 @@
 package schemair
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -113,6 +114,93 @@ func TestUpdateLockSkipsProtobufReservedRange(t *testing.T) {
 	}
 }
 
+func TestUpdateLockMovesRemovedPropertyToReserved(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount":      {Name: "amount"},
+			"coupon_code": {Name: "coupon_code"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	removedNumber := lock.Events[eventKey(event)].Properties["coupon_code"].ProtoNumber
+	delete(event.Properties, "coupon_code")
+	reg.Events = []registry.Event{event}
+
+	updated, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+
+	updatedEvent := updated.Events[eventKey(event)]
+	if _, ok := updatedEvent.Properties["coupon_code"]; ok {
+		t.Fatalf("coupon_code remained active after removal")
+	}
+	wantReserved := ReservedField{
+		Name:        "coupon_code",
+		StableID:    "coupon_code",
+		ProtoNumber: removedNumber,
+		Reason:      "field removed",
+	}
+	if !reflect.DeepEqual(updatedEvent.Reserved, []ReservedField{wantReserved}) {
+		t.Fatalf("Reserved = %#v, want %#v", updatedEvent.Reserved, []ReservedField{wantReserved})
+	}
+
+	event.Properties["tax"] = registry.Field{Name: "tax"}
+	reg.Events = []registry.Event{event}
+
+	updated, err = UpdateLock(updated, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after adding property error = %v", err)
+	}
+
+	if updated.Events[eventKey(event)].Properties["tax"].ProtoNumber != removedNumber+1 {
+		t.Fatalf("tax ProtoNumber = %d, want %d", updated.Events[eventKey(event)].Properties["tax"].ProtoNumber, removedNumber+1)
+	}
+}
+
+func TestUpdateLockPreservesRemovedContextNumbers(t *testing.T) {
+	reg := registry.Registry{
+		Context: map[string]registry.Field{
+			"account_id": {Name: "account_id"},
+			"tenant_id":  {Name: "tenant_id"},
+		},
+	}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	removedNumber := lock.Context["tenant_id"].ProtoNumber
+	delete(reg.Context, "tenant_id")
+
+	updated, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+	if updated.Context["tenant_id"].ProtoNumber != removedNumber {
+		t.Fatalf("removed tenant_id ProtoNumber = %d, want preserved %d", updated.Context["tenant_id"].ProtoNumber, removedNumber)
+	}
+
+	reg.Context["region"] = registry.Field{Name: "region"}
+	updated, err = UpdateLock(updated, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after adding context field error = %v", err)
+	}
+
+	if updated.Context["region"].ProtoNumber != removedNumber+1 {
+		t.Fatalf("region ProtoNumber = %d, want %d", updated.Context["region"].ProtoNumber, removedNumber+1)
+	}
+}
+
 func TestCheckLockRejectsMissingField(t *testing.T) {
 	event := registry.Event{
 		Name:    "checkout.completed",
@@ -189,4 +277,144 @@ func TestCheckLockRejectsDuplicateNumbersWithinMessage(t *testing.T) {
 	if !strings.Contains(err.Error(), "duplicate") {
 		t.Fatalf("CheckLock() error = %q, want duplicate error", err)
 	}
+}
+
+func TestCheckLockRejectsRemovedPropertyStillActive(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock := Lock{
+		Version: LockVersion,
+		Events: map[string]LockedEvent{
+			eventKey(event): {
+				Envelope: lockedEnvelopeForTest(),
+				Properties: map[string]LockedField{
+					"amount":      {StableID: "amount", ProtoNumber: 1},
+					"coupon_code": {StableID: "coupon_code", ProtoNumber: 2},
+				},
+			},
+		},
+	}
+
+	err := CheckLock(lock, reg)
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1.reserved.coupon_code is missing") {
+		t.Fatalf("CheckLock() error = %q", err)
+	}
+}
+
+func TestCheckLockRejectsStaleActiveEvent(t *testing.T) {
+	event := registry.Event{Name: "checkout.completed", Version: 1}
+	lock := Lock{
+		Version: LockVersion,
+		Events: map[string]LockedEvent{
+			eventKey(event): {
+				Envelope:   lockedEnvelopeForTest(),
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	err := CheckLock(lock, registry.Registry{})
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1 is not in registry") {
+		t.Fatalf("CheckLock() error = %q", err)
+	}
+}
+
+func TestCheckLockDoesNotMutateLock(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"coupon_code": {Name: "coupon_code"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+	lock := Lock{
+		Version: LockVersion,
+		Context: map[string]LockedField{
+			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			eventKey(event): {
+				Envelope:   lockedEnvelopeForTest(),
+				Properties: map[string]LockedField{},
+				Reserved:   nil,
+			},
+		},
+	}
+	before := cloneLockForTest(lock)
+
+	err := CheckLock(lock, reg)
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want stale lock error")
+	}
+	if lock.Events[eventKey(event)].Reserved != nil {
+		t.Fatalf("CheckLock() changed Reserved from nil to %#v", lock.Events[eventKey(event)].Reserved)
+	}
+	if !reflect.DeepEqual(lock, before) {
+		t.Fatalf("CheckLock() mutated lock: got %#v want %#v", lock, before)
+	}
+}
+
+func lockedEnvelopeForTest() map[string]LockedField {
+	return map[string]LockedField{
+		"event_name":    {StableID: "event_name", ProtoNumber: 1},
+		"event_version": {StableID: "event_version", ProtoNumber: 2},
+		"event_id":      {StableID: "event_id", ProtoNumber: 3},
+		"event_ts":      {StableID: "event_ts", ProtoNumber: 4},
+		"client":        {StableID: "client", ProtoNumber: 5},
+		"context":       {StableID: "context", ProtoNumber: 6},
+		"properties":    {StableID: "properties", ProtoNumber: 7},
+	}
+}
+
+func cloneLockForTest(lock Lock) Lock {
+	clone := Lock{
+		Version: lock.Version,
+		Context: cloneLockedFieldsForTest(lock.Context),
+		Events:  make(map[string]LockedEvent, len(lock.Events)),
+	}
+	if lock.Events == nil {
+		clone.Events = nil
+	}
+	for key, event := range lock.Events {
+		clone.Events[key] = LockedEvent{
+			Envelope:   cloneLockedFieldsForTest(event.Envelope),
+			Properties: cloneLockedFieldsForTest(event.Properties),
+			Reserved:   cloneReservedFieldsForTest(event.Reserved),
+		}
+	}
+	return clone
+}
+
+func cloneLockedFieldsForTest(fields map[string]LockedField) map[string]LockedField {
+	if fields == nil {
+		return nil
+	}
+	clone := make(map[string]LockedField, len(fields))
+	for name, field := range fields {
+		clone[name] = field
+	}
+	return clone
+}
+
+func cloneReservedFieldsForTest(fields []ReservedField) []ReservedField {
+	if fields == nil {
+		return nil
+	}
+	clone := make([]ReservedField, len(fields))
+	copy(clone, fields)
+	return clone
 }
