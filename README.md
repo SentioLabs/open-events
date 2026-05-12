@@ -57,7 +57,7 @@ go run ./cmd/openevents generate go ./examples/demo <output-dir>
 go run ./cmd/openevents generate python ./examples/demo <output-dir>
 ```
 
-The direct Go/Python generators are transitional. They will be deprecated only after Buf-generated Go/Python pass the demo interop integration test.
+The direct Go/Python generators are deprecated transitional paths. Use `generate proto` plus Buf as the durable backend-driven workflow.
 
 ## Backend-driven code generation
 

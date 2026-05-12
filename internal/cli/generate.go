@@ -17,7 +17,10 @@ func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 	return &cobra.Command{
 		Use:   "generate <go|python|proto> <registry-path> <output-dir>",
 		Short: "Generate code from an OpenEvents registry",
-		Args:  cobra.ExactArgs(3),
+		Long: "Generate code from an OpenEvents registry.\n\n" +
+			"The durable backend path is `generate proto` followed by Buf workflows. " +
+			"Direct `generate go` and `generate python` targets are transitional and deprecated.",
+		Args: cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := args[0]
 			reg, _, loadErr := loadValidatedRegistry(args[1])
@@ -29,8 +32,10 @@ func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 			var err error
 			switch target {
 			case "go":
+				fmt.Fprintln(errOut, "warning: `generate go` is deprecated and transitional; prefer `generate proto` + Buf for durable code generation")
 				err = codegen.GenerateGo(reg, args[2])
 			case "python":
+				fmt.Fprintln(errOut, "warning: `generate python` is deprecated and transitional; prefer `generate proto` + Buf for durable code generation")
 				err = codegen.GeneratePython(reg, args[2])
 			case "proto":
 				var lock schemair.Lock

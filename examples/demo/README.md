@@ -22,7 +22,7 @@ Expected output:
 ok: registry valid (3 events, 4 context fields)
 ```
 
-The direct Go/Python generators are transitional. They will be deprecated only after Buf-generated Go/Python pass the demo interop integration test.
+The direct Go/Python generators are deprecated transitional paths. Use `generate proto` plus Buf as the durable backend-driven workflow.
 
 The demo includes:
 
