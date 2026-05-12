@@ -11,26 +11,31 @@ import (
 
 // Protobuf reserved keywords and reserved words
 var protobufKeywords = map[string]bool{
-	"syntax":   true,
-	"import":   true,
-	"package":  true,
-	"option":   true,
-	"message":  true,
-	"enum":     true,
-	"service":  true,
-	"rpc":      true,
-	"returns":  true,
-	"reserved": true,
-	"repeated": true,
-	"optional": true,
-	"required": true,
-	"oneof":    true,
-	"map":      true,
-	"extend":   true,
-	"extends":  true,
-	"group":    true,
-	"to":       true,
-	"max":      true,
+	// Grammar keywords
+	"syntax":     true,
+	"import":     true,
+	"package":    true,
+	"option":     true,
+	"message":    true,
+	"enum":       true,
+	"service":    true,
+	"rpc":        true,
+	"returns":    true,
+	"reserved":   true,
+	"repeated":   true,
+	"optional":   true,
+	"required":   true,
+	"oneof":      true,
+	"map":        true,
+	"extend":     true,
+	"extends":    true,
+	"extensions": true,
+	"group":      true,
+	"to":         true,
+	"max":        true,
+	"public":     true,
+	"weak":       true,
+	"stream":     true,
 	// Protobuf scalar types
 	"double":   true,
 	"float":    true,
@@ -73,6 +78,36 @@ func ProtoFilePath(namespace string, version int) (string, error) {
 	return path.Join(strings.ReplaceAll(pkg, ".", "/"), "events.proto"), nil
 }
 
+func validateEventName(name string) error {
+	if name == "" {
+		return fmt.Errorf("event name must not be empty")
+	}
+
+	// Check first character is a letter
+	if len(name) > 0 {
+		first := rune(name[0])
+		if !isASCIILetter(first) {
+			return fmt.Errorf("event name must start with a letter, got %q", string(first))
+		}
+	}
+
+	// Check all characters are valid
+	for _, r := range name {
+		if r > 127 {
+			return fmt.Errorf("event name contains non-ASCII character: %q", string(r))
+		}
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return fmt.Errorf("event name contains whitespace")
+		}
+		// Allow letters, digits, dot, underscore, hyphen
+		if !isASCIILetter(r) && !isASCIIDigit(r) && r != '.' && r != '_' && r != '-' {
+			return fmt.Errorf("event name contains unsupported character: %q", string(r))
+		}
+	}
+
+	return nil
+}
+
 func EventMessageName(event registry.Event) string {
 	base := pascalCase(event.Name)
 	return fmt.Sprintf("%sV%d", base, event.Version)
@@ -92,9 +127,21 @@ func EnumValueName(enumName string, raw string) (string, error) {
 		return "", fmt.Errorf("invalid enum name %q: %w", enumName, err)
 	}
 
+	// Validate raw enum value has no whitespace before processing
+	if err := validateNoWhitespace(raw); err != nil {
+		return "", fmt.Errorf("invalid enum value %q: %w", raw, err)
+	}
+
 	value, err := upperIdentifier(raw)
 	if err != nil {
 		return "", fmt.Errorf("invalid enum value %q: %w", raw, err)
+	}
+
+	// Check if the normalized value collides with the reserved zero value
+	// Compare without underscores since "un-specified" -> "UN_SPECIFIED"
+	valueNoUnderscore := strings.ReplaceAll(strings.ToUpper(value), "_", "")
+	if valueNoUnderscore == "UNSPECIFIED" {
+		return "", fmt.Errorf("enum value %q normalizes to UNSPECIFIED which collides with reserved zero value %s_UNSPECIFIED", raw, prefix)
 	}
 
 	return prefix + "_" + value, nil
@@ -167,6 +214,15 @@ func namespaceParts(namespace string) ([]string, error) {
 	}
 
 	return parts, nil
+}
+
+func validateNoWhitespace(s string) error {
+	for _, r := range s {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
+			return fmt.Errorf("contains whitespace character")
+		}
+	}
+	return nil
 }
 
 func upperIdentifier(raw string) (string, error) {

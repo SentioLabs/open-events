@@ -37,6 +37,10 @@ func TestProtoPackageRejectsInvalidNamespace(t *testing.T) {
 		{name: "scalar type keyword string", namespace: "com.string.api", want: "reserved keyword"},
 		{name: "scalar type keyword bool", namespace: "bool.acme", want: "reserved keyword"},
 		{name: "leading underscore", namespace: "_internal.acme", want: "start"},
+		{name: "grammar keyword public", namespace: "com.public.api", want: "reserved keyword"},
+		{name: "grammar keyword weak", namespace: "weak.acme", want: "reserved keyword"},
+		{name: "grammar keyword stream", namespace: "com.stream", want: "reserved keyword"},
+		{name: "grammar keyword extensions", namespace: "extensions.api", want: "reserved keyword"},
 	}
 
 	for _, tt := range tests {
@@ -162,6 +166,57 @@ func TestEnumTypeNameRejectsUnrenderable(t *testing.T) {
 			}
 			// If helper returns fallback like "Enum", that's also acceptable for this test
 			// The real validation happens in FromRegistry
+		})
+	}
+}
+
+func TestEnumValueNameRejectsWhitespace(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "leading space", raw: " USD", want: "whitespace"},
+		{name: "trailing space", raw: "USD ", want: "whitespace"},
+		{name: "both sides space", raw: " USD ", want: "whitespace"},
+		{name: "internal space", raw: "US D", want: "whitespace"},
+		{name: "tab character", raw: "USD\t", want: "whitespace"},
+		{name: "newline character", raw: "USD\n", want: "whitespace"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := EnumValueName("Currency", tt.raw)
+			if err == nil {
+				t.Fatalf("EnumValueName() error = nil, want error for %q", tt.raw)
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(tt.want)) {
+				t.Fatalf("EnumValueName() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestEnumValueNameRejectsUnspecifiedCollision(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+	}{
+		{name: "lowercase unspecified", raw: "unspecified"},
+		{name: "uppercase UNSPECIFIED", raw: "UNSPECIFIED"},
+		{name: "hyphenated un-specified", raw: "un-specified"},
+		{name: "underscored un_specified", raw: "un_specified"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := EnumValueName("PaymentMethod", tt.raw)
+			if err == nil {
+				t.Fatalf("EnumValueName() error = nil, want error for reserved zero value collision")
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), "unspecified") || !strings.Contains(strings.ToLower(err.Error()), "reserved") {
+				t.Fatalf("EnumValueName() error = %q, want mention of reserved unspecified", err)
+			}
 		})
 	}
 }

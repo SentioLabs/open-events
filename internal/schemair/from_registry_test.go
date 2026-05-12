@@ -77,6 +77,7 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 	}
 
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"tenant_id":  {StableID: "tenant_id", ProtoNumber: 2},
 			"session_id": {StableID: "session_id", ProtoNumber: 3},
@@ -292,7 +293,7 @@ func TestFromRegistryRejectsMissingLockEntries(t *testing.T) {
 		}},
 	}
 
-	_, err := FromRegistry(reg, Lock{})
+	_, err := FromRegistry(reg, Lock{Version: 1})
 	if err == nil {
 		t.Fatalf("FromRegistry() error = nil, want missing lock error")
 	}
@@ -316,6 +317,7 @@ func TestFromRegistryRejectsMissingPropertyLockEntries(t *testing.T) {
 		}},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
 		},
@@ -355,6 +357,7 @@ func TestFromRegistryRejectsUnsupportedArrayShapes(t *testing.T) {
 		}},
 	}
 	lock := Lock{
+		Version: 1,
 		Events: map[string]LockedEvent{
 			"checkout.completed@1": {
 				Properties: map[string]LockedField{
@@ -393,6 +396,7 @@ func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
 				Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 			}
 			lock := Lock{
+				Version: 1,
 				Context: map[string]LockedField{
 					"tenant_id": {StableID: "tenant_id", ProtoNumber: tt.number},
 				},
@@ -421,6 +425,7 @@ func TestFromRegistryRejectsStableIDMismatch(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"tenant_id": {StableID: "wrong_name", ProtoNumber: 1},
 		},
@@ -448,6 +453,7 @@ func TestFromRegistryRejectsDuplicateNumbers(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
 			"user_id":   {StableID: "user_id", ProtoNumber: 1},
@@ -475,6 +481,7 @@ func TestFromRegistryRejectsReservedFieldNames(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"message": {StableID: "message", ProtoNumber: 1},
 		},
@@ -501,6 +508,7 @@ func TestFromRegistryRejectsNonASCIIFieldNames(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"café": {StableID: "café", ProtoNumber: 1},
 		},
@@ -525,6 +533,7 @@ func TestFromRegistryRejectsNonASCIINamespace(t *testing.T) {
 		Events:    []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
+		Version: 1,
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -546,6 +555,7 @@ func TestFromRegistryRejectsMessageNameCollisions(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Events: map[string]LockedEvent{
 			"a.b_c@1": {Properties: map[string]LockedField{}},
 			"a_b.c@1": {Properties: map[string]LockedField{}},
@@ -574,6 +584,7 @@ func TestFromRegistryRejectsMixedVersions(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 			"test@2": {Properties: map[string]LockedField{}},
@@ -595,7 +606,7 @@ func TestFromRegistryRejectsNoEvents(t *testing.T) {
 		Context:   map[string]registry.Field{},
 		Events:    []registry.Event{},
 	}
-	lock := Lock{}
+	lock := Lock{Version: 1}
 
 	_, err := FromRegistry(reg, lock)
 	if err == nil {
@@ -619,6 +630,7 @@ func TestFromRegistryRejectsEmptyEventName(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{},
 		Events: map[string]LockedEvent{
 			"@1": {
@@ -649,6 +661,7 @@ func TestFromRegistryRejectsUnrenderableEventName(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{},
 		Events: map[string]LockedEvent{
 			"---@1": {
@@ -689,6 +702,7 @@ func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"string": {StableID: "string", ProtoNumber: 1},
 		},
@@ -734,6 +748,7 @@ func TestFromRegistryRejectsContextEnumTypeNameCollision(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"foo_bar":  {StableID: "foo_bar", ProtoNumber: 1},
 			"foo__bar": {StableID: "foo__bar", ProtoNumber: 2},
@@ -778,6 +793,7 @@ func TestFromRegistryRejectsPropertiesEnumTypeNameCollision(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
@@ -816,6 +832,7 @@ func TestFromRegistryRejectsLeadingUnderscoreInFieldName(t *testing.T) {
 		},
 	}
 	lock := Lock{
+		Version: 1,
 		Context: map[string]LockedField{
 			"_tenant_id": {StableID: "_tenant_id", ProtoNumber: 1},
 		},

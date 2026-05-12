@@ -8,6 +8,11 @@ import (
 )
 
 func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
+	// Validate lock structure before proceeding
+	if err := validateLockForLowering(reg, lock); err != nil {
+		return Registry{}, err
+	}
+
 	// Validate that we have exactly one version
 	if len(reg.Events) == 0 {
 		return Registry{}, fmt.Errorf("registry has no events; cannot infer version")
@@ -61,6 +66,11 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 
 		messages := []Message{clientMessage(), context}
 		for _, event := range events {
+			// Validate event name before case conversion
+			if err := validateEventName(event.Name); err != nil {
+				return Registry{}, fmt.Errorf("event name %q is invalid: %w", event.Name, err)
+			}
+
 			// Validate event name is renderable
 			if pascalCase(event.Name) == "" {
 				return Registry{}, fmt.Errorf("event name %q cannot be rendered as a valid protobuf message name", event.Name)
@@ -327,4 +337,185 @@ func sortedRegistryFieldNames(fields map[string]registry.Field) []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func validateLockForLowering(reg registry.Registry, lock Lock) error {
+	// Validate lock version
+	if lock.Version != LockVersion {
+		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
+	}
+
+	// Validate context lock entries
+	if err := validateContextLock(reg, lock); err != nil {
+		return err
+	}
+
+	// Validate event lock entries
+	for _, event := range reg.Events {
+		key := eventKey(event)
+		if err := validateEventLock(reg, lock, event, key); err != nil {
+			return err
+		}
+	}
+
+	// Check for stale extra lock entries not in registry
+	if err := validateNoStaleLockEntries(reg, lock); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateContextLock(reg registry.Registry, lock Lock) error {
+	// Validate all active context fields have valid lock entries
+	for name := range reg.Context {
+		locked, ok := lock.Context[name]
+		if !ok {
+			// This is handled elsewhere with more specific error
+			continue
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
+			return err
+		}
+
+		// Validate StableID
+		if locked.StableID != name {
+			return fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
+		}
+	}
+
+	// Check for duplicate proto numbers in context
+	byNumber := make(map[int]string)
+	for name, locked := range lock.Context {
+		if existing, exists := byNumber[locked.ProtoNumber]; exists {
+			return fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
+		}
+		byNumber[locked.ProtoNumber] = name
+	}
+
+	return nil
+}
+
+func validateEventLock(reg registry.Registry, lock Lock, event registry.Event, key string) error {
+	lockedEvent, ok := lock.Events[key]
+	if !ok {
+		// This is handled elsewhere with more specific error
+		return nil
+	}
+
+	// Envelope lock entries are not validated during lowering since envelope
+	// fields are hardcoded with fixed numbers 1-7
+
+	// Validate properties lock entries
+	if err := validatePropertiesLock(event, key, lockedEvent); err != nil {
+		return err
+	}
+
+	// Validate reserved entries
+	if err := validateReservedEntries(key, lockedEvent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validatePropertiesLock(event registry.Event, key string, lockedEvent LockedEvent) error {
+	// Validate all active property fields have valid lock entries
+	for name := range event.Properties {
+		locked, ok := lockedEvent.Properties[name]
+		if !ok {
+			// This is handled elsewhere with more specific error
+			continue
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber("events."+key+".properties."+name, locked.ProtoNumber); err != nil {
+			return err
+		}
+
+		// Validate StableID
+		if locked.StableID != name {
+			return fmt.Errorf("schema lock StableID mismatch for events.%s.properties.%s: lock has %q, expected %q", key, name, locked.StableID, name)
+		}
+	}
+
+	// Check for duplicate proto numbers in properties and reserved
+	byNumber := make(map[int]string)
+	for name, locked := range lockedEvent.Properties {
+		if existing, exists := byNumber[locked.ProtoNumber]; exists {
+			return fmt.Errorf("events.%s.properties has duplicate proto number %d used by both %q and %q", key, locked.ProtoNumber, existing, name)
+		}
+		byNumber[locked.ProtoNumber] = name
+	}
+	for _, reserved := range lockedEvent.Reserved {
+		if existing, exists := byNumber[reserved.ProtoNumber]; exists {
+			return fmt.Errorf("events.%s.properties/reserved has duplicate proto number %d used by both %q and %q", key, reserved.ProtoNumber, existing, reserved.Name)
+		}
+		byNumber[reserved.ProtoNumber] = reserved.Name
+	}
+
+	return nil
+}
+
+func validateReservedEntries(key string, lockedEvent LockedEvent) error {
+	for _, reserved := range lockedEvent.Reserved {
+		path := "events." + key + ".reserved." + reserved.Name
+
+		// Validate name is non-empty
+		if reserved.Name == "" {
+			return fmt.Errorf("schema lock has invalid reserved field at events.%s.reserved: name must be non-empty", key)
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber(path, reserved.ProtoNumber); err != nil {
+			return err
+		}
+
+		// Validate StableID matches name
+		if reserved.StableID != reserved.Name {
+			return fmt.Errorf("schema lock StableID mismatch for %s: lock has %q, expected %q", path, reserved.StableID, reserved.Name)
+		}
+
+		// Validate reason
+		if reserved.Reason != reservedFieldReasonRemoved {
+			return fmt.Errorf("schema lock has invalid reserved reason at %s: got %q want %q", path, reserved.Reason, reservedFieldReasonRemoved)
+		}
+	}
+
+	return nil
+}
+
+func validateNoStaleLockEntries(reg registry.Registry, lock Lock) error {
+	// Check for stale context entries
+	for name := range lock.Context {
+		if _, ok := reg.Context[name]; !ok {
+			return fmt.Errorf("schema lock has stale context entry %q not in registry", name)
+		}
+	}
+
+	// Build map of registry events for quick lookup
+	regEvents := make(map[string]registry.Event)
+	for _, event := range reg.Events {
+		key := eventKey(event)
+		regEvents[key] = event
+	}
+
+	// Check for stale event entries
+	for key, lockedEvent := range lock.Events {
+		event, ok := regEvents[key]
+		if !ok {
+			return fmt.Errorf("schema lock has stale event entry %q not in registry", key)
+		}
+
+		// Check for stale property entries
+		for name := range lockedEvent.Properties {
+			if _, ok := event.Properties[name]; !ok {
+				return fmt.Errorf("schema lock has stale property entry events.%s.properties.%s not in registry", key, name)
+			}
+		}
+	}
+
+	return nil
 }
