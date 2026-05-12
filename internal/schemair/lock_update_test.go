@@ -46,6 +46,33 @@ func TestUpdateLockAllocatesStableContextNumbers(t *testing.T) {
 	}
 }
 
+func TestUpdateLockRejectsDuplicateRegistryEventKeys(t *testing.T) {
+	reg := registry.Registry{Events: []registry.Event{
+		{
+			Name:    "checkout.completed",
+			Version: 1,
+			Properties: map[string]registry.Field{
+				"amount": {Name: "amount"},
+			},
+		},
+		{
+			Name:    "checkout.completed",
+			Version: 1,
+			Properties: map[string]registry.Field{
+				"order_id": {Name: "order_id"},
+			},
+		},
+	}}
+
+	_, err := UpdateLock(Lock{}, reg)
+	if err == nil {
+		t.Fatalf("UpdateLock() error = nil, want duplicate event key error")
+	}
+	if !strings.Contains(err.Error(), "duplicate event key checkout.completed@1") {
+		t.Fatalf("UpdateLock() error = %q, want duplicate event key", err)
+	}
+}
+
 func TestUpdateLockPreservesExistingPropertyNumbers(t *testing.T) {
 	event := registry.Event{
 		Name:    "checkout.completed",
@@ -235,6 +262,56 @@ func TestCheckLockRejectsMissingField(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "events.checkout.completed@1.properties.coupon_code is missing") {
 		t.Fatalf("CheckLock() error = %q", err)
+	}
+}
+
+func TestCompareReservedFieldsRejectsDuplicateReservedNumbers(t *testing.T) {
+	actual := []ReservedField{
+		{Name: "legacy_coupon_code", StableID: "legacy_coupon_code", ProtoNumber: 9, Reason: "field removed"},
+		{Name: "coupon_code", StableID: "coupon_code", ProtoNumber: 9, Reason: "field removed"},
+	}
+	expected := []ReservedField{
+		{Name: "coupon_code", StableID: "coupon_code", ProtoNumber: 9, Reason: "field removed"},
+	}
+
+	err := compareReservedFields("checkout.completed@1", actual, expected)
+	if err == nil {
+		t.Fatalf("compareReservedFields() error = nil, want duplicate reserved number error")
+	}
+	if !strings.Contains(err.Error(), "duplicate proto numbers") || !strings.Contains(err.Error(), "events.checkout.completed@1.reserved") {
+		t.Fatalf("compareReservedFields() error = %q, want duplicate reserved number path", err)
+	}
+}
+
+func TestCheckDuplicateNumbersReportsSortedFieldNames(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		fields := map[string]LockedField{
+			"zulu":  {StableID: "zulu", ProtoNumber: 3},
+			"alpha": {StableID: "alpha", ProtoNumber: 3},
+		}
+
+		err := checkDuplicateNumbers("message", fields, nil)
+		if err == nil {
+			t.Fatalf("checkDuplicateNumbers() error = nil, want duplicate error")
+		}
+		want := "schema lock has duplicate proto numbers in message: alpha and zulu share 3"
+		if err.Error() != want {
+			t.Fatalf("checkDuplicateNumbers() error = %q, want %q", err, want)
+		}
+	}
+}
+
+func TestSortedReservedFieldsUsesStableTieBreakers(t *testing.T) {
+	fields := []ReservedField{
+		{Name: "coupon_code", StableID: "zeta", ProtoNumber: 9, Reason: "field removed"},
+		{Name: "coupon_code", StableID: "alpha", ProtoNumber: 9, Reason: "renamed"},
+		{Name: "coupon_code", StableID: "alpha", ProtoNumber: 9, Reason: "field removed"},
+	}
+
+	got := sortedReservedFields(fields)
+	want := []ReservedField{fields[2], fields[1], fields[0]}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sortedReservedFields() = %#v, want %#v", got, want)
 	}
 }
 

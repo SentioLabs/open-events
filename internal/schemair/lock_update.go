@@ -44,8 +44,14 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		updated.Context[name] = LockedField{StableID: name, ProtoNumber: number}
 	}
 
+	seenEventKeys := make(map[string]struct{}, len(reg.Events))
 	for _, event := range reg.Events {
 		key := eventKey(event)
+		if _, exists := seenEventKeys[key]; exists {
+			return Lock{}, fmt.Errorf("schema registry has duplicate event key %s", key)
+		}
+		seenEventKeys[key] = struct{}{}
+
 		existingEvent := existing.Events[key]
 		updatedEvent := LockedEvent{
 			Envelope:   make(map[string]LockedField, len(envelopeNumbers)),
@@ -53,7 +59,8 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 			Reserved:   make([]ReservedField, 0, len(existingEvent.Reserved)),
 		}
 
-		for name, number := range envelopeNumbers {
+		for _, name := range sortedEnvelopeFieldNames() {
+			number := envelopeNumbers[name]
 			stableID := name
 			if locked, ok := existingEvent.Envelope[name]; ok && locked.StableID != "" {
 				stableID = locked.StableID
@@ -103,10 +110,7 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 			})
 		}
 		sort.Slice(updatedEvent.Reserved, func(i, j int) bool {
-			if updatedEvent.Reserved[i].ProtoNumber == updatedEvent.Reserved[j].ProtoNumber {
-				return updatedEvent.Reserved[i].Name < updatedEvent.Reserved[j].Name
-			}
-			return updatedEvent.Reserved[i].ProtoNumber < updatedEvent.Reserved[j].ProtoNumber
+			return lessReservedField(updatedEvent.Reserved[i], updatedEvent.Reserved[j])
 		})
 
 		updated.Events[key] = updatedEvent
@@ -205,6 +209,15 @@ func eventKey(event registry.Event) string {
 	return fmt.Sprintf("%s@%d", event.Name, event.Version)
 }
 
+func sortedEnvelopeFieldNames() []string {
+	names := make([]string, 0, len(envelopeNumbers))
+	for name := range envelopeNumbers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func sortedFieldNames(fields map[string]registry.Field) []string {
 	names := make([]string, 0, len(fields))
 	for name := range fields {
@@ -233,17 +246,26 @@ func sortedLockedEventKeys(events map[string]LockedEvent) []string {
 }
 
 func compareReservedFields(eventKey string, actual []ReservedField, expected []ReservedField) error {
-	actualByNumber := make(map[int]ReservedField, len(actual))
-	for _, reserved := range actual {
-		actualByNumber[reserved.ProtoNumber] = reserved
+	path := "events." + eventKey + ".reserved"
+	if err := checkDuplicateReservedNumbers(path, actual); err != nil {
+		return err
 	}
-	expectedByNumber := make(map[int]ReservedField, len(expected))
+	if err := checkDuplicateReservedNumbers(path, expected); err != nil {
+		return err
+	}
+
+	actualByKey := make(map[reservedFieldKey]ReservedField, len(actual))
+	for _, reserved := range actual {
+		actualByKey[reservedFieldKey{protoNumber: reserved.ProtoNumber, name: reserved.Name}] = reserved
+	}
+	expectedByKey := make(map[reservedFieldKey]ReservedField, len(expected))
 	for _, reserved := range expected {
-		expectedByNumber[reserved.ProtoNumber] = reserved
+		expectedByKey[reservedFieldKey{protoNumber: reserved.ProtoNumber, name: reserved.Name}] = reserved
 	}
 
 	for _, exp := range sortedReservedFields(expected) {
-		actual, ok := actualByNumber[exp.ProtoNumber]
+		key := reservedFieldKey{protoNumber: exp.ProtoNumber, name: exp.Name}
+		actual, ok := actualByKey[key]
 		if !ok {
 			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is missing", eventKey, exp.Name)
 		}
@@ -252,7 +274,8 @@ func compareReservedFields(eventKey string, actual []ReservedField, expected []R
 		}
 	}
 	for _, actual := range sortedReservedFields(actual) {
-		if _, ok := expectedByNumber[actual.ProtoNumber]; !ok {
+		key := reservedFieldKey{protoNumber: actual.ProtoNumber, name: actual.Name}
+		if _, ok := expectedByKey[key]; !ok {
 			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is not expected", eventKey, actual.Name)
 		}
 	}
@@ -260,15 +283,30 @@ func compareReservedFields(eventKey string, actual []ReservedField, expected []R
 	return nil
 }
 
+type reservedFieldKey struct {
+	protoNumber int
+	name        string
+}
+
 func sortedReservedFields(fields []ReservedField) []ReservedField {
 	sorted := append([]ReservedField(nil), fields...)
 	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].ProtoNumber == sorted[j].ProtoNumber {
-			return sorted[i].Name < sorted[j].Name
-		}
-		return sorted[i].ProtoNumber < sorted[j].ProtoNumber
+		return lessReservedField(sorted[i], sorted[j])
 	})
 	return sorted
+}
+
+func lessReservedField(left ReservedField, right ReservedField) bool {
+	if left.ProtoNumber != right.ProtoNumber {
+		return left.ProtoNumber < right.ProtoNumber
+	}
+	if left.Name != right.Name {
+		return left.Name < right.Name
+	}
+	if left.StableID != right.StableID {
+		return left.StableID < right.StableID
+	}
+	return left.Reason < right.Reason
 }
 
 func validateLockDuplicates(lock Lock) error {
@@ -276,7 +314,8 @@ func validateLockDuplicates(lock Lock) error {
 		return err
 	}
 
-	for key, event := range lock.Events {
+	for _, key := range sortedLockedEventKeys(lock.Events) {
+		event := lock.Events[key]
 		if err := checkDuplicateNumbers("events."+key+".envelope", event.Envelope, nil); err != nil {
 			return err
 		}
@@ -290,13 +329,25 @@ func validateLockDuplicates(lock Lock) error {
 
 func checkDuplicateNumbers(path string, fields map[string]LockedField, reserved []ReservedField) error {
 	byNumber := map[int]string{}
-	for name, field := range fields {
+	for _, name := range sortedLockedFieldNames(fields) {
+		field := fields[name]
 		if prior, exists := byNumber[field.ProtoNumber]; exists {
 			return fmt.Errorf("schema lock has duplicate proto numbers in %s: %s and %s share %d", path, prior, name, field.ProtoNumber)
 		}
 		byNumber[field.ProtoNumber] = name
 	}
-	for _, item := range reserved {
+	for _, item := range sortedReservedFields(reserved) {
+		if prior, exists := byNumber[item.ProtoNumber]; exists {
+			return fmt.Errorf("schema lock has duplicate proto numbers in %s: %s and %s share %d", path, prior, item.Name, item.ProtoNumber)
+		}
+		byNumber[item.ProtoNumber] = item.Name
+	}
+	return nil
+}
+
+func checkDuplicateReservedNumbers(path string, reserved []ReservedField) error {
+	byNumber := map[int]string{}
+	for _, item := range sortedReservedFields(reserved) {
 		if prior, exists := byNumber[item.ProtoNumber]; exists {
 			return fmt.Errorf("schema lock has duplicate proto numbers in %s: %s and %s share %d", path, prior, item.Name, item.ProtoNumber)
 		}
