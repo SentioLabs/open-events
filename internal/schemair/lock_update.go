@@ -9,6 +9,11 @@ import (
 
 const LockVersion = 1
 
+const (
+	protobufReservedStart = 19000
+	protobufReservedEnd   = 19999
+)
+
 var envelopeNumbers = map[string]int{
 	"event_name":    1,
 	"event_version": 2,
@@ -20,6 +25,10 @@ var envelopeNumbers = map[string]int{
 }
 
 func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
+	if err := validateLockNumbers(existing); err != nil {
+		return Lock{}, err
+	}
+
 	updated := Lock{
 		Version: LockVersion,
 		Context: make(map[string]LockedField, len(reg.Context)),
@@ -91,9 +100,6 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		}
 
 		for _, reserved := range existingEvent.Reserved {
-			if _, exists := updatedEvent.Properties[reserved.Name]; exists {
-				continue
-			}
 			updatedEvent.Reserved = append(updatedEvent.Reserved, reserved)
 		}
 
@@ -120,7 +126,16 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 }
 
 func CheckLock(lock Lock, reg registry.Registry) error {
+	if lock.Version != LockVersion {
+		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
+	}
+	if err := validateLockNumbers(lock); err != nil {
+		return err
+	}
 	if err := validateLockDuplicates(lock); err != nil {
+		return err
+	}
+	if err := validateLockNumberHistory(lock); err != nil {
 		return err
 	}
 
@@ -298,6 +313,104 @@ func lessReservedField(left ReservedField, right ReservedField) bool {
 	return left.Reason < right.Reason
 }
 
+func validateLockNumbers(lock Lock) error {
+	for _, name := range sortedLockedFieldNames(lock.Context) {
+		if err := validateProtoNumber("context."+name, lock.Context[name].ProtoNumber); err != nil {
+			return err
+		}
+	}
+
+	for _, key := range sortedLockedEventKeys(lock.Events) {
+		event := lock.Events[key]
+		for _, name := range sortedLockedFieldNames(event.Envelope) {
+			if err := validateProtoNumber("events."+key+".envelope."+name, event.Envelope[name].ProtoNumber); err != nil {
+				return err
+			}
+		}
+		for _, name := range sortedLockedFieldNames(event.Properties) {
+			if err := validateProtoNumber("events."+key+".properties."+name, event.Properties[name].ProtoNumber); err != nil {
+				return err
+			}
+		}
+		for _, reserved := range sortedReservedFields(event.Reserved) {
+			if err := validateProtoNumber("events."+key+".reserved."+reserved.Name, reserved.ProtoNumber); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateProtoNumber(path string, number int) error {
+	if number < 1 {
+		return fmt.Errorf("schema lock has invalid proto number at %s: got %d, want >= 1", path, number)
+	}
+	if isProtobufReservedNumber(number) {
+		return fmt.Errorf("schema lock has invalid proto number at %s: %d is in protobuf reserved range 19000..19999", path, number)
+	}
+	return nil
+}
+
+func validateLockNumberHistory(lock Lock) error {
+	contextNumbers := make([]int, 0, len(lock.Context))
+	for _, name := range sortedLockedFieldNames(lock.Context) {
+		contextNumbers = append(contextNumbers, lock.Context[name].ProtoNumber)
+	}
+	if err := checkDenseNumberHistory("context", contextNumbers); err != nil {
+		return err
+	}
+
+	for _, key := range sortedLockedEventKeys(lock.Events) {
+		event := lock.Events[key]
+		numbers := make([]int, 0, len(event.Properties)+len(event.Reserved))
+		for _, name := range sortedLockedFieldNames(event.Properties) {
+			numbers = append(numbers, event.Properties[name].ProtoNumber)
+		}
+		for _, reserved := range sortedReservedFields(event.Reserved) {
+			numbers = append(numbers, reserved.ProtoNumber)
+		}
+		if err := checkDenseNumberHistory("events."+key+".properties", numbers); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func checkDenseNumberHistory(path string, numbers []int) error {
+	if len(numbers) == 0 {
+		return nil
+	}
+
+	sorted := append([]int(nil), numbers...)
+	sort.Ints(sorted)
+	expected := 1
+	for _, number := range sorted {
+		if number < expected {
+			continue
+		}
+		if number > expected {
+			return fmt.Errorf("schema lock is stale: %s is missing proto number %d before %d", path, expected, number)
+		}
+		expected = nextExpectedProtoNumber(expected)
+	}
+
+	return nil
+}
+
+func nextExpectedProtoNumber(number int) int {
+	next := number + 1
+	if isProtobufReservedNumber(next) {
+		return protobufReservedEnd + 1
+	}
+	return next
+}
+
+func isProtobufReservedNumber(number int) bool {
+	return number >= protobufReservedStart && number <= protobufReservedEnd
+}
+
 func validateLockDuplicates(lock Lock) error {
 	if err := checkDuplicateNumbers("context", lock.Context, nil); err != nil {
 		return err
@@ -347,8 +460,8 @@ func checkDuplicateReservedNumbers(path string, reserved []ReservedField) error 
 
 func nextSequentialNumber(maxUsed int) int {
 	n := maxUsed + 1
-	if n >= 19000 && n <= 19999 {
-		return 20000
+	if isProtobufReservedNumber(n) {
+		return protobufReservedEnd + 1
 	}
 	return n
 }
