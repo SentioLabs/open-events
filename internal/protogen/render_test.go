@@ -157,6 +157,36 @@ func TestRenderFileEmitsGoPackageOption(t *testing.T) {
 	}
 }
 
+func TestRenderFileRejectsInvalidGoPackage(t *testing.T) {
+	tests := []struct {
+		name      string
+		goPackage string
+		want      string
+	}{
+		{name: "keyword alias", goPackage: "github.com/acme/type", want: "keyword"},
+		{name: "semicolon", goPackage: "github.com/acme/storefront/events;evil", want: "invalid package.go"},
+		{name: "newline", goPackage: "github.com/acme/storefront/events\nnext", want: "invalid package.go"},
+		{name: "control", goPackage: "github.com/acme/storefront/events\x01", want: "invalid package.go"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := RenderFile(schemair.File{
+				Path:      "example/v1/events.proto",
+				Package:   "example.v1",
+				GoPackage: tt.goPackage,
+				Messages:  []schemair.Message{{Name: "Example"}},
+			})
+			if err == nil {
+				t.Fatalf("RenderFile() error = nil, want non-nil")
+			}
+			if !strings.Contains(strings.ToLower(err.Error()), strings.ToLower(tt.want)) {
+				t.Fatalf("RenderFile() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderFileEmitsOptionalScalarsAndNeverOptionalRepeatedFields(t *testing.T) {
 	got, err := RenderFile(schemair.File{
 		Path:    "example/v1/events.proto",

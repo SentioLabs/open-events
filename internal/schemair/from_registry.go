@@ -2,7 +2,9 @@ package schemair
 
 import (
 	"fmt"
+	"go/token"
 	"sort"
+	"strings"
 
 	"github.com/sentiolabs/open-events/internal/registry"
 )
@@ -33,6 +35,10 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 
 	if len(versions) > 1 {
 		return Registry{}, fmt.Errorf("registry contains multiple versions (%v); FromRegistry requires exactly one version per file", versions)
+	}
+
+	if err := validateGoPackage(reg.Package.Go); err != nil {
+		return Registry{}, err
 	}
 
 	files := make([]File, 0, len(versions))
@@ -107,6 +113,18 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 	}
 
 	return Registry{Namespace: reg.Namespace, Files: files}, nil
+}
+
+func validateGoPackage(goPackage string) error {
+	if goPackage == "" {
+		return nil
+	}
+	parts := strings.Split(goPackage, "/")
+	base := parts[len(parts)-1]
+	if token.Lookup(base).IsKeyword() {
+		return fmt.Errorf("package.go basename %q must not be a Go keyword", base)
+	}
+	return nil
 }
 
 func clientMessage() Message {

@@ -9,12 +9,15 @@ import (
 	"testing"
 )
 
-func runCommand(t *testing.T, dir string, name string, args ...string) string {
+func runCommand(t *testing.T, dir string, env []string, name string, args ...string) string {
 	t.Helper()
 
 	cmd := exec.Command(name, args...)
 	if dir != "" {
 		cmd.Dir = dir
+	}
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -27,11 +30,19 @@ func ensureBuf(t *testing.T) string {
 	t.Helper()
 
 	bufPath := filepath.Join("..", "..", ".tools", "bin", "buf")
+	protocGenGoPath := filepath.Join("..", "..", ".tools", "bin", "protoc-gen-go")
 	if _, err := os.Stat(bufPath); err != nil {
 		if os.IsNotExist(err) {
-			runCommand(t, "", "bash", "../../scripts/install-buf.sh")
+			runCommand(t, "", nil, "bash", "../../scripts/install-buf.sh")
 		} else {
 			t.Fatalf("stat %s: %v", bufPath, err)
+		}
+	}
+	if _, err := os.Stat(protocGenGoPath); err != nil {
+		if os.IsNotExist(err) {
+			runCommand(t, "", nil, "bash", "../../scripts/install-buf.sh")
+		} else {
+			t.Fatalf("stat %s: %v", protocGenGoPath, err)
 		}
 	}
 
@@ -182,11 +193,11 @@ assert event.properties.total_cents == 1099
 		demoCopy := filepath.Join(temp, "demo")
 		copyDir(t, "../../examples/demo", demoCopy)
 
-		runCommand(t, "", "go", "run", "../../cmd/openevents", "lock", "update", demoCopy)
-		runCommand(t, "", "go", "run", "../../cmd/openevents", "lock", "check", demoCopy)
+		runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "update", demoCopy)
+		runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "check", demoCopy)
 
 		out := filepath.Join(temp, "proto-out")
-		runCommand(t, "", "go", "run", "../../cmd/openevents", "generate", "proto", demoCopy, out)
+		runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "generate", "proto", demoCopy, out)
 
 		for _, rel := range []string{
 			"buf.yaml",
@@ -200,8 +211,19 @@ assert event.properties.total_cents == 1099
 		}
 
 		bufPath := ensureBuf(t)
-		runCommand(t, "", bufPath, "lint", out)
-		runCommand(t, "", bufPath, "build", out)
-		runCommand(t, out, bufPath, "generate", ".")
+		toolsBin := filepath.Dir(bufPath)
+		bufEnv := []string{"PATH=" + toolsBin + string(os.PathListSeparator) + os.Getenv("PATH")}
+		runCommand(t, "", nil, bufPath, "lint", out)
+		runCommand(t, "", nil, bufPath, "build", out)
+		runCommand(t, out, bufEnv, bufPath, "generate", ".")
+
+		for _, rel := range []string{
+			"gen/go/com/acme/storefront/v1/events.pb.go",
+			"gen/python/com/acme/storefront/v1/events_pb2.py",
+		} {
+			if _, err := os.Stat(filepath.Join(out, rel)); err != nil {
+				t.Fatalf("expected generated file %s to exist: %v", rel, err)
+			}
+		}
 	})
 }

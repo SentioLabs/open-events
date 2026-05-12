@@ -2,6 +2,7 @@ package registry
 
 import (
 	"fmt"
+	"go/token"
 	"regexp"
 	"sort"
 	"strings"
@@ -35,8 +36,16 @@ func Validate(reg Registry) Diagnostics {
 }
 
 func validatePackages(pkg PackageConfig, diags *Diagnostics) {
-	if pkg.Go != "" && !goPackagePattern.MatchString(pkg.Go) {
-		*diags = append(*diags, Diagnostic{Location: "package.go", Message: "package.go must be a valid Go import path"})
+	if pkg.Go != "" {
+		if !goPackagePattern.MatchString(pkg.Go) {
+			*diags = append(*diags, Diagnostic{Location: "package.go", Message: "package.go must be a valid Go import path"})
+		} else {
+			parts := strings.Split(pkg.Go, "/")
+			base := parts[len(parts)-1]
+			if token.Lookup(base).IsKeyword() {
+				*diags = append(*diags, Diagnostic{Location: "package.go", Message: "package.go basename must not be a Go keyword"})
+			}
+		}
 	}
 	if pkg.Python != "" && !pythonPackagePattern.MatchString(pkg.Python) {
 		*diags = append(*diags, Diagnostic{Location: "package.python", Message: "package.python must be a valid Python package name"})

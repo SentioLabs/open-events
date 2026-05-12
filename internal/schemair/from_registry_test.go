@@ -31,6 +31,25 @@ func TestFromRegistryCarriesGoPackage(t *testing.T) {
 	}
 }
 
+func TestFromRegistryRejectsGoPackageWithKeywordAlias(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Package: registry.PackageConfig{
+			Go: "github.com/acme/type",
+		},
+		Events: []registry.Event{{Name: "checkout.completed", Version: 1}},
+	}
+	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want non-nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "package.go") || !strings.Contains(strings.ToLower(err.Error()), "keyword") {
+		t.Fatalf("FromRegistry() error = %q, want package.go keyword validation", err)
+	}
+}
+
 func TestFromRegistryLowersDemoShape(t *testing.T) {
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",

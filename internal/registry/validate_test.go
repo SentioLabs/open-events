@@ -108,6 +108,15 @@ func TestValidateRejectsInvalidPackageNamesWhenPresent(t *testing.T) {
 	})
 }
 
+func TestValidateRejectsGoPackageKeywordBasename(t *testing.T) {
+	reg := validRegistry()
+	reg.Package.Go = "github.com/example/type"
+
+	assertDiagnostics(t, Validate(reg), Diagnostics{
+		{Location: "package.go", Message: "package.go basename must not be a Go keyword"},
+	})
+}
+
 func TestValidateRejectsInvalidEventName(t *testing.T) {
 	reg := validRegistry()
 	reg.Events[0].Name = "UserSignedUp"

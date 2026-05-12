@@ -3,9 +3,12 @@ package protogen
 import (
 	"bytes"
 	"fmt"
+	"go/token"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -17,6 +20,8 @@ const (
 	metadataVersion = 1
 	metadataBackend = "protobuf"
 )
+
+var goPackagePattern = regexp.MustCompile(`^[a-z0-9]+([._/-][a-z0-9]+)*$`)
 
 // Render writes protobuf backend files for reg into outDir.
 func Render(reg schemair.Registry, outDir string) error {
@@ -73,7 +78,14 @@ func RenderFile(file schemair.File) ([]byte, error) {
 	b.WriteString("syntax = \"proto3\";\n\n")
 	fmt.Fprintf(&b, "package %s;\n", file.Package)
 	if file.GoPackage != "" {
-		fmt.Fprintf(&b, "option go_package = \"%s;%s\";\n", protoStringLiteral(file.GoPackage), goPackageAlias(file.GoPackage))
+		if err := validateGoPackage(file.GoPackage); err != nil {
+			return nil, err
+		}
+		alias, err := goPackageAlias(file.GoPackage)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(file.GoPackage+";"+alias))
 	}
 	if hasTimestamp {
 		b.WriteString("\nimport \"google/protobuf/timestamp.proto\";\n")
@@ -99,7 +111,7 @@ func RenderBufYAML() []byte {
 
 // RenderBufGenYAML renders the Buf generation configuration.
 func RenderBufGenYAML() []byte {
-	return []byte("version: v2\nplugins:\n  - remote: buf.build/protocolbuffers/go\n    out: gen/go\n    opt: paths=source_relative\n  - remote: buf.build/protocolbuffers/python\n    out: gen/python\n")
+	return []byte("version: v2\nplugins:\n  - local: protoc-gen-go\n    out: gen/go\n    opt: paths=source_relative\n  - protoc_builtin: python\n    out: gen/python\n")
 }
 
 // RenderMetadata renders deterministic protobuf sidecar metadata for reg.
@@ -365,13 +377,22 @@ func isDriveQualifiedPath(filePath string) bool {
 	return (first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')
 }
 
-func protoStringLiteral(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	value = strings.ReplaceAll(value, `"`, `\"`)
-	return value
+func validateGoPackage(goPackage string) error {
+	if !goPackagePattern.MatchString(goPackage) {
+		return fmt.Errorf("invalid package.go %q: must be a valid Go import path", goPackage)
+	}
+	if strings.Contains(goPackage, ";") {
+		return fmt.Errorf("invalid package.go %q: must not contain semicolons", goPackage)
+	}
+	for _, r := range goPackage {
+		if r < 0x20 || r == 0x7f {
+			return fmt.Errorf("invalid package.go %q: must not contain control characters", goPackage)
+		}
+	}
+	return nil
 }
 
-func goPackageAlias(goPackage string) string {
+func goPackageAlias(goPackage string) (string, error) {
 	lastSlash := strings.LastIndex(goPackage, "/")
 	alias := goPackage
 	if lastSlash >= 0 {
@@ -387,12 +408,15 @@ func goPackageAlias(goPackage string) string {
 	}
 	alias = cleaned.String()
 	if alias == "" {
-		return "events"
+		return "", fmt.Errorf("invalid package.go %q: alias is empty", goPackage)
 	}
 	if alias[0] >= '0' && alias[0] <= '9' {
 		alias = "pkg_" + alias
 	}
-	return alias
+	if token.Lookup(alias).IsKeyword() {
+		return "", fmt.Errorf("invalid package.go %q: alias %q is a Go keyword", goPackage, alias)
+	}
+	return alias, nil
 }
 
 func splitEnumName(enumName string) []string {
