@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -67,6 +68,11 @@ func newLockCheckCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 				fmt.Fprintln(errOut, err)
 				return errLockFailed
 			}
+			currentBytes, err := os.ReadFile(lockPath)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errLockFailed
+			}
 			lock, err := readLockFile(lockPath)
 			if err != nil {
 				fmt.Fprintln(errOut, err)
@@ -74,6 +80,20 @@ func newLockCheckCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 			}
 			if err := schemair.CheckLock(lock, reg); err != nil {
 				fmt.Fprintln(errOut, err)
+				return errLockFailed
+			}
+			updated, err := schemair.UpdateLock(lock, reg)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errLockFailed
+			}
+			expectedBytes, err := marshalLockFile(updated)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errLockFailed
+			}
+			if !bytes.Equal(currentBytes, expectedBytes) {
+				fmt.Fprintf(errOut, "schema lock is not canonical at %s; run `openevents lock update %s`\n", lockPath, args[0])
 				return errLockFailed
 			}
 			fmt.Fprintf(out, "ok: schema lock is current at %s\n", lockPath)
@@ -99,9 +119,6 @@ func lockFilePath(registryPath string) string {
 }
 
 func registryDefinitionPath(registryPath string) string {
-	if isDirectoryPath(registryPath) {
-		return filepath.Join(registryPath, "openevents.yaml")
-	}
 	return registryPath
 }
 
@@ -133,11 +150,15 @@ func readLockFile(path string) (schemair.Lock, error) {
 }
 
 func writeLockFile(path string, lock schemair.Lock) error {
-	content, err := yaml.Marshal(newLockFile(lock))
+	content, err := marshalLockFile(lock)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, content, 0o644)
+}
+
+func marshalLockFile(lock schemair.Lock) ([]byte, error) {
+	return yaml.Marshal(newLockFile(lock))
 }
 
 type lockFile struct {

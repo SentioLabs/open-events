@@ -73,7 +73,12 @@ func discoverYAMLFiles(path string) ([]string, Diagnostics) {
 			return nil
 		}
 
-		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		name := entry.Name()
+		if name == "openevents.lock.yaml" {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(name))
 		if ext != ".yaml" && ext != ".yml" {
 			return nil
 		}

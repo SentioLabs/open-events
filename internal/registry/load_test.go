@@ -97,6 +97,30 @@ func TestLoadRejectsAdditionalYAMLDocuments(t *testing.T) {
 	}
 }
 
+func TestLoadDirectoryIgnoresOpenEventsLockFile(t *testing.T) {
+	registryPath := filepath.Join("..", "..", "examples", "basic", "openevents.yaml")
+	data, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q): %v", registryPath, err)
+	}
+
+	tempDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tempDir, "openevents.yaml"), data, 0o644); err != nil {
+		t.Fatalf("WriteFile(openevents.yaml): %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tempDir, "openevents.lock.yaml"), []byte("version: 1\ncontext: {}\nevents: {}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(openevents.lock.yaml): %v", err)
+	}
+
+	withLock, diags := Load(tempDir)
+	if diags.HasErrors() {
+		t.Fatalf("Load(%q) diagnostics = %v", tempDir, diags)
+	}
+	if got, want := len(withLock.Events), 2; got != want {
+		t.Fatalf("len(withLock.Events) = %d, want %d", got, want)
+	}
+}
+
 func TestLoadConflictingSingletonDiagnosticLocation(t *testing.T) {
 	tempDir := t.TempDir()
 	aPath := filepath.Join(tempDir, "a.yaml")
