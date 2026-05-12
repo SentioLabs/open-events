@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -54,6 +55,27 @@ func ensureBuf(t *testing.T) string {
 	return absPath
 }
 
+var (
+	errPythonProtobufVersionMismatch = errors.New("python protobuf version mismatch")
+	errPythonProtobufPathMismatch    = errors.New("python protobuf path mismatch")
+	errPythonProtobufOutputFormat    = errors.New("python protobuf output format mismatch")
+)
+
+func validatePinnedPythonRuntime(expectedVersion string, pythonTools string, output string) error {
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	if len(lines) != 2 {
+		return errPythonProtobufOutputFormat
+	}
+	if lines[0] != expectedVersion {
+		return fmt.Errorf("%w: got %q want %q", errPythonProtobufVersionMismatch, lines[0], expectedVersion)
+	}
+	protobufPath := filepath.Clean(lines[1])
+	if !strings.HasPrefix(protobufPath, filepath.Clean(pythonTools)+string(filepath.Separator)) {
+		return fmt.Errorf("%w: got %q, want under %q", errPythonProtobufPathMismatch, protobufPath, pythonTools)
+	}
+	return nil
+}
+
 func ensurePinnedPythonPath(t *testing.T, out string) string {
 	t.Helper()
 
@@ -62,6 +84,7 @@ func ensurePinnedPythonPath(t *testing.T, out string) string {
 		t.Fatalf("abs repo root: %v", err)
 	}
 	pythonTools := filepath.Join(repoRoot, ".tools", "python-protobuf")
+	protobufInit := filepath.Join(pythonTools, "google", "protobuf", "__init__.py")
 	versionFile := filepath.Join(repoRoot, ".tools", "python-protobuf.version")
 	versionBytes, err := os.ReadFile(versionFile)
 	if err != nil {
@@ -72,33 +95,41 @@ func ensurePinnedPythonPath(t *testing.T, out string) string {
 		t.Fatalf("missing python protobuf version in %s", versionFile)
 	}
 
-	checkVersion := func() (string, error) {
-		cmd := exec.Command("python3", "-c", "import google.protobuf; print(google.protobuf.__version__)")
-		cmd.Env = append(os.Environ(), "PYTHONPATH="+pythonTools)
-		out, err := cmd.CombinedOutput()
-		return strings.TrimSpace(string(out)), err
+	checkRuntime := func(pythonPath string, script string) ([]byte, error) {
+		cmd := exec.Command("python3", "-c", script)
+		cmd.Env = append(os.Environ(), "PYTHONPATH="+pythonPath)
+		return cmd.CombinedOutput()
 	}
 
-	if gotVersion, err := checkVersion(); err != nil || gotVersion != expectedVersion {
-		runCommand(t, "", nil, "bash", "../../scripts/install-buf.sh")
-		gotVersion, err = checkVersion()
-		if err != nil {
-			t.Fatalf("verify local python protobuf runtime: %v\n%s", err, gotVersion)
+	if _, err := os.Stat(protobufInit); err != nil {
+		if os.IsNotExist(err) {
+			runCommand(t, "", nil, "bash", "../../scripts/install-buf.sh")
+		} else {
+			t.Fatalf("stat %s: %v", protobufInit, err)
 		}
-		if gotVersion != expectedVersion {
-			t.Fatalf("local python protobuf version = %q, want %q", gotVersion, expectedVersion)
+	}
+
+	runtimeScript := "import google.protobuf; print(google.protobuf.__version__); print(google.protobuf.__file__)"
+	checkOutput, err := checkRuntime(pythonTools, runtimeScript)
+	if err != nil || validatePinnedPythonRuntime(expectedVersion, pythonTools, string(checkOutput)) != nil {
+		runCommand(t, "", nil, "bash", "../../scripts/install-buf.sh")
+		checkOutput, err = checkRuntime(pythonTools, runtimeScript)
+		if err != nil {
+			t.Fatalf("verify local python protobuf runtime: %v\n%s", err, checkOutput)
+		}
+		if err := validatePinnedPythonRuntime(expectedVersion, pythonTools, string(checkOutput)); err != nil {
+			t.Fatalf("verify local python protobuf runtime provenance: %v\n%s", err, checkOutput)
 		}
 	}
 
 	pythonGenerated := filepath.Join(out, "gen", "python")
-	compatCheck := exec.Command("python3", "-c", "from com.acme.storefront.v1 import events_pb2; import google.protobuf; print(google.protobuf.__version__)")
-	compatCheck.Env = append(os.Environ(), fmt.Sprintf("PYTHONPATH=%s%c%s", pythonTools, os.PathListSeparator, pythonGenerated))
-	compatOut, err := compatCheck.CombinedOutput()
+	compatScript := "from com.acme.storefront.v1 import events_pb2; import google.protobuf; print(google.protobuf.__version__); print(google.protobuf.__file__)"
+	compatOutput, err := checkRuntime(fmt.Sprintf("%s%c%s", pythonTools, os.PathListSeparator, pythonGenerated), compatScript)
 	if err != nil {
-		t.Fatalf("verify pinned python protobuf compatibility: %v\n%s", err, compatOut)
+		t.Fatalf("verify pinned python protobuf compatibility: %v\n%s", err, compatOutput)
 	}
-	if got, want := strings.TrimSpace(string(compatOut)), expectedVersion; got != want {
-		t.Fatalf("compat runtime version = %q, want %q", got, want)
+	if err := validatePinnedPythonRuntime(expectedVersion, pythonTools, string(compatOutput)); err != nil {
+		t.Fatalf("compat runtime verification failed: %v\n%s", err, compatOutput)
 	}
 
 	return fmt.Sprintf("%s%c%s", pythonTools, os.PathListSeparator, pythonGenerated)
@@ -239,6 +270,42 @@ assert event.properties.total_cents == 1099
 
 	pythonPath := ensurePinnedPythonPath(t, out)
 	runCommand(t, "", []string{"PYTHONPATH=" + pythonPath}, "python3", pyScriptPath, payloadFile)
+}
+
+func TestValidatePinnedPythonRuntime(t *testing.T) {
+	repoRoot := filepath.Clean(string(filepath.Separator) + filepath.Join("repo"))
+	pythonTools := filepath.Join(repoRoot, ".tools", "python-protobuf")
+
+	tests := []struct {
+		name    string
+		output  string
+		wantErr error
+	}{
+		{
+			name:    "accepts expected version and local file",
+			output:  "1.2.3\n" + filepath.Join(pythonTools, "google", "protobuf", "__init__.py"),
+			wantErr: nil,
+		},
+		{
+			name:    "rejects wrong version",
+			output:  "9.9.9\n" + filepath.Join(pythonTools, "google", "protobuf", "__init__.py"),
+			wantErr: errPythonProtobufVersionMismatch,
+		},
+		{
+			name:    "rejects global fallback",
+			output:  "1.2.3\n/usr/lib/python3/dist-packages/google/protobuf/__init__.py",
+			wantErr: errPythonProtobufPathMismatch,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validatePinnedPythonRuntime("1.2.3", pythonTools, tt.output)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("validatePinnedPythonRuntime() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestValidateAndGenerateDemoRegistry(t *testing.T) {
