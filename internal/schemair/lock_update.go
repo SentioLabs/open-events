@@ -9,6 +9,8 @@ import (
 
 const LockVersion = 1
 
+const reservedFieldReasonRemoved = "field removed"
+
 const (
 	protobufReservedStart = 19000
 	protobufReservedEnd   = 19999
@@ -29,6 +31,9 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		return Lock{}, err
 	}
 	if err := validateActiveStableIDs(existing, reg); err != nil {
+		return Lock{}, err
+	}
+	if err := validateReservedFieldIdentities(existing, reg); err != nil {
 		return Lock{}, err
 	}
 	if err := validateLockDuplicates(existing); err != nil {
@@ -113,7 +118,7 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 				Name:        name,
 				StableID:    locked.StableID,
 				ProtoNumber: locked.ProtoNumber,
-				Reason:      "field removed",
+				Reason:      reservedFieldReasonRemoved,
 			})
 		}
 		sort.Slice(updatedEvent.Reserved, func(i, j int) bool {
@@ -134,6 +139,9 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		return err
 	}
 	if err := validateActiveStableIDs(lock, reg); err != nil {
+		return err
+	}
+	if err := validateReservedFieldIdentities(lock, reg); err != nil {
 		return err
 	}
 	if err := validateLockDuplicates(lock); err != nil {
@@ -364,11 +372,8 @@ func validateActiveStableIDs(lock Lock, reg registry.Registry) error {
 				return err
 			}
 		}
-		for _, name := range sortedFieldNames(event.Properties) {
-			locked, ok := existingEvent.Properties[name]
-			if !ok {
-				continue
-			}
+		for _, name := range sortedLockedFieldNames(existingEvent.Properties) {
+			locked := existingEvent.Properties[name]
 			if err := validateStableID("events."+key+".properties."+name, locked.StableID, name); err != nil {
 				return err
 			}
@@ -381,6 +386,30 @@ func validateActiveStableIDs(lock Lock, reg registry.Registry) error {
 func validateStableID(path string, actual string, expected string) error {
 	if actual != expected {
 		return fmt.Errorf("schema lock has invalid stable ID at %s: got %q want %q", path, actual, expected)
+	}
+	return nil
+}
+
+func validateReservedFieldIdentities(lock Lock, reg registry.Registry) error {
+	for _, event := range reg.Events {
+		key := eventKey(event)
+		lockedEvent, ok := lock.Events[key]
+		if !ok {
+			continue
+		}
+		for _, reserved := range sortedReservedFields(lockedEvent.Reserved) {
+			path := "events." + key + ".reserved"
+			if reserved.Name == "" {
+				return fmt.Errorf("schema lock has invalid reserved field at %s: name must be non-empty", path)
+			}
+			fieldPath := path + "." + reserved.Name
+			if err := validateStableID(fieldPath, reserved.StableID, reserved.Name); err != nil {
+				return err
+			}
+			if reserved.Reason != reservedFieldReasonRemoved {
+				return fmt.Errorf("schema lock has invalid reserved reason at %s: got %q want %q", fieldPath, reserved.Reason, reservedFieldReasonRemoved)
+			}
+		}
 	}
 	return nil
 }
