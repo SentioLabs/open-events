@@ -17,5 +17,6 @@ func NewRootCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 	cmd.SetErr(errOut)
 	cmd.AddCommand(newValidateCommand(out, errOut))
 	cmd.AddCommand(newGenerateCommand(out, errOut))
+	cmd.AddCommand(newLockCommand(out, errOut))
 	return cmd
 }
