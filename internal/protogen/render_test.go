@@ -138,6 +138,25 @@ func TestRenderRejectsInvalidProtoFilePaths(t *testing.T) {
 	}
 }
 
+func TestRenderFileEmitsGoPackageOption(t *testing.T) {
+	got, err := RenderFile(schemair.File{
+		Path:      "example/v1/events.proto",
+		Package:   "example.v1",
+		GoPackage: "github.com/acme/storefront/events",
+		Messages: []schemair.Message{
+			{Name: "Example"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderFile() error = %v, want nil", err)
+	}
+
+	text := string(got)
+	if !strings.Contains(text, "package example.v1;\noption go_package = \"github.com/acme/storefront/events;events\";\n") {
+		t.Fatalf("RenderFile() output missing go_package option:\n%s", text)
+	}
+}
+
 func TestRenderFileEmitsOptionalScalarsAndNeverOptionalRepeatedFields(t *testing.T) {
 	got, err := RenderFile(schemair.File{
 		Path:    "example/v1/events.proto",
@@ -323,8 +342,9 @@ func demoRegistry() schemair.Registry {
 		Namespace: "com.acme.storefront.v1",
 		Files: []schemair.File{
 			{
-				Path:    "com/acme/storefront/v1/events.proto",
-				Package: "com.acme.storefront.v1",
+				Path:      "com/acme/storefront/v1/events.proto",
+				Package:   "com.acme.storefront.v1",
+				GoPackage: "github.com/acme/storefront/events",
 				Messages: []schemair.Message{
 					{
 						Name:        "Client",

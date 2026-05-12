@@ -6,9 +6,10 @@ type Registry struct {
 }
 
 type File struct {
-	Path     string
-	Package  string
-	Messages []Message
+	Path      string
+	Package   string
+	GoPackage string
+	Messages  []Message
 }
 
 type Message struct {

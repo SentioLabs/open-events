@@ -72,6 +72,9 @@ func RenderFile(file schemair.File) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("syntax = \"proto3\";\n\n")
 	fmt.Fprintf(&b, "package %s;\n", file.Package)
+	if file.GoPackage != "" {
+		fmt.Fprintf(&b, "option go_package = \"%s;%s\";\n", protoStringLiteral(file.GoPackage), goPackageAlias(file.GoPackage))
+	}
 	if hasTimestamp {
 		b.WriteString("\nimport \"google/protobuf/timestamp.proto\";\n")
 	}
@@ -360,6 +363,36 @@ func isDriveQualifiedPath(filePath string) bool {
 
 	first := filePath[0]
 	return (first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')
+}
+
+func protoStringLiteral(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `"`, `\"`)
+	return value
+}
+
+func goPackageAlias(goPackage string) string {
+	lastSlash := strings.LastIndex(goPackage, "/")
+	alias := goPackage
+	if lastSlash >= 0 {
+		alias = goPackage[lastSlash+1:]
+	}
+	var cleaned strings.Builder
+	for _, r := range alias {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			cleaned.WriteRune(r)
+			continue
+		}
+		cleaned.WriteRune('_')
+	}
+	alias = cleaned.String()
+	if alias == "" {
+		return "events"
+	}
+	if alias[0] >= '0' && alias[0] <= '9' {
+		alias = "pkg_" + alias
+	}
+	return alias
 }
 
 func splitEnumName(enumName string) []string {

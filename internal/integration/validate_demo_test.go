@@ -202,5 +202,6 @@ assert event.properties.total_cents == 1099
 		bufPath := ensureBuf(t)
 		runCommand(t, "", bufPath, "lint", out)
 		runCommand(t, "", bufPath, "build", out)
+		runCommand(t, out, bufPath, "generate", ".")
 	})
 }

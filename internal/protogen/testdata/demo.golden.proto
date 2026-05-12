@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package com.acme.storefront.v1;
+option go_package = "github.com/acme/storefront/events;events";
 
 import "google/protobuf/timestamp.proto";
 

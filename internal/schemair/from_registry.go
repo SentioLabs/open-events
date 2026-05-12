@@ -103,7 +103,7 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 			messages = append(messages, envelopeMessage(event), properties)
 		}
 
-		files = append(files, File{Path: filePath, Package: pkg, Messages: messages})
+		files = append(files, File{Path: filePath, Package: pkg, GoPackage: reg.Package.Go, Messages: messages})
 	}
 
 	return Registry{Namespace: reg.Namespace, Files: files}, nil

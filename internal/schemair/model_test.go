@@ -7,6 +7,7 @@ func TestModelContract(t *testing.T) {
 	var _ []File = Registry{}.Files
 	var _ string = File{}.Path
 	var _ string = File{}.Package
+	var _ string = File{}.GoPackage
 	var _ []Message = File{}.Messages
 	var _ string = Message{}.Name
 	var _ []Field = Message{}.Fields

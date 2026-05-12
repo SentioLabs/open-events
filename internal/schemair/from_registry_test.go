@@ -7,6 +7,30 @@ import (
 	"github.com/sentiolabs/open-events/internal/registry"
 )
 
+func TestFromRegistryCarriesGoPackage(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Package: registry.PackageConfig{
+			Go: "github.com/acme/storefront/events",
+		},
+		Events: []registry.Event{
+			{Name: "checkout.completed", Version: 1},
+		},
+	}
+	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+
+	got, err := FromRegistry(reg, lock)
+	if err != nil {
+		t.Fatalf("FromRegistry() error = %v, want nil", err)
+	}
+	if len(got.Files) != 1 {
+		t.Fatalf("len(Registry.Files) = %d, want 1", len(got.Files))
+	}
+	if got.Files[0].GoPackage != "github.com/acme/storefront/events" {
+		t.Fatalf("File.GoPackage = %q, want %q", got.Files[0].GoPackage, "github.com/acme/storefront/events")
+	}
+}
+
 func TestFromRegistryLowersDemoShape(t *testing.T) {
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
@@ -127,6 +151,9 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 	}
 	if file.Path != "com/acme/storefront/v1/events.proto" {
 		t.Fatalf("File.Path = %q, want %q", file.Path, "com/acme/storefront/v1/events.proto")
+	}
+	if file.GoPackage != "" {
+		t.Fatalf("File.GoPackage = %q, want empty when registry package.go is unset", file.GoPackage)
 	}
 
 	if len(file.Messages) != 6 {
