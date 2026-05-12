@@ -1,17 +1,19 @@
 # OpenEvents demo registry
 
-This folder is a small storefront analytics registry that demonstrates current OpenEvents commands:
+This folder is a small storefront analytics registry that demonstrates current OpenEvents commands.
 
-```bash
-go run ../../cmd/openevents validate .
-go run ../../cmd/openevents generate go . <output-dir>
-go run ../../cmd/openevents generate python . <output-dir>
-```
+## Demo workflow
 
 From the repository root, run:
 
 ```bash
 go run ./cmd/openevents validate ./examples/demo
+go run ./cmd/openevents lock update ./examples/demo
+go run ./cmd/openevents generate proto ./examples/demo ./build/demo-proto
+bash scripts/install-buf.sh
+.tools/bin/buf lint ./build/demo-proto
+.tools/bin/buf build ./build/demo-proto
+.tools/bin/buf generate ./build/demo-proto
 ```
 
 Expected output:
@@ -19,6 +21,8 @@ Expected output:
 ```text
 ok: registry valid (3 events, 4 context fields)
 ```
+
+The direct Go/Python generators are transitional. They will be deprecated only after Buf-generated Go/Python pass the demo interop integration test.
 
 The demo includes:
 
