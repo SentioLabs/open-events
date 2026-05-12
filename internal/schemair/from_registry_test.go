@@ -372,3 +372,236 @@ func TestFromRegistryRejectsUnsupportedArrayShapes(t *testing.T) {
 		t.Fatalf("FromRegistry() error = %q, want actionable array enum error", err)
 	}
 }
+
+func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
+	tests := []struct {
+		name   string
+		number int
+		want   string
+	}{
+		{name: "zero", number: 0, want: ">= 1"},
+		{name: "reserved range", number: 19000, want: "reserved range"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := registry.Registry{
+				Namespace: "com.acme.storefront",
+				Context: map[string]registry.Field{
+					"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+				},
+				Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+			}
+			lock := Lock{
+				Context: map[string]LockedField{
+					"tenant_id": {StableID: "tenant_id", ProtoNumber: tt.number},
+				},
+				Events: map[string]LockedEvent{
+					"test@1": {Properties: map[string]LockedField{}},
+				},
+			}
+
+			_, err := FromRegistry(reg, lock)
+			if err == nil {
+				t.Fatalf("FromRegistry() error = nil, want proto number validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("FromRegistry() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestFromRegistryRejectsStableIDMismatch(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+		},
+		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"tenant_id": {StableID: "wrong_name", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want StableID mismatch error")
+	}
+	if !strings.Contains(err.Error(), "tenant_id") || !strings.Contains(err.Error(), "wrong_name") {
+		t.Fatalf("FromRegistry() error = %q, want both field names mentioned", err)
+	}
+}
+
+func TestFromRegistryRejectsDuplicateNumbers(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+			"user_id":   {Name: "user_id", Type: registry.FieldTypeString},
+		},
+		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+			"user_id":   {StableID: "user_id", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want duplicate number error")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("FromRegistry() error = %q, want duplicate mention", err)
+	}
+}
+
+func TestFromRegistryRejectsReservedFieldNames(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context: map[string]registry.Field{
+			"message": {Name: "message", Type: registry.FieldTypeString},
+		},
+		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"message": {StableID: "message", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want reserved keyword error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "reserved") || !strings.Contains(strings.ToLower(err.Error()), "keyword") {
+		t.Fatalf("FromRegistry() error = %q, want reserved keyword mention", err)
+	}
+}
+
+func TestFromRegistryRejectsNonASCIIFieldNames(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context: map[string]registry.Field{
+			"café": {Name: "café", Type: registry.FieldTypeString},
+		},
+		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+	}
+	lock := Lock{
+		Context: map[string]LockedField{
+			"café": {StableID: "café", ProtoNumber: 1},
+		},
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want ASCII validation error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "ascii") {
+		t.Fatalf("FromRegistry() error = %q, want ASCII mention", err)
+	}
+}
+
+func TestFromRegistryRejectsNonASCIINamespace(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acmé.storefront",
+		Context:   map[string]registry.Field{},
+		Events:    []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+	}
+	lock := Lock{
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want namespace validation error")
+	}
+}
+
+func TestFromRegistryRejectsMessageNameCollisions(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{
+			{Name: "a.b_c", Version: 1, Properties: map[string]registry.Field{}},
+			{Name: "a_b.c", Version: 1, Properties: map[string]registry.Field{}},
+		},
+	}
+	lock := Lock{
+		Events: map[string]LockedEvent{
+			"a.b_c@1": {Properties: map[string]LockedField{}},
+			"a_b.c@1": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want message name collision error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "collision") {
+		t.Fatalf("FromRegistry() error = %q, want collision mention", err)
+	}
+	if !strings.Contains(err.Error(), "a.b_c") || !strings.Contains(err.Error(), "a_b.c") {
+		t.Fatalf("FromRegistry() error = %q, want both event names mentioned", err)
+	}
+}
+
+func TestFromRegistryRejectsMixedVersions(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{
+			{Name: "test", Version: 1, Properties: map[string]registry.Field{}},
+			{Name: "test", Version: 2, Properties: map[string]registry.Field{}},
+		},
+	}
+	lock := Lock{
+		Events: map[string]LockedEvent{
+			"test@1": {Properties: map[string]LockedField{}},
+			"test@2": {Properties: map[string]LockedField{}},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want mixed version error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "version") {
+		t.Fatalf("FromRegistry() error = %q, want version mention", err)
+	}
+}
+
+func TestFromRegistryRejectsNoEvents(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Context:   map[string]registry.Field{},
+		Events:    []registry.Event{},
+	}
+	lock := Lock{}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want no events error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "event") {
+		t.Fatalf("FromRegistry() error = %q, want event mention", err)
+	}
+}

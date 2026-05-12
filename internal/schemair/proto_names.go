@@ -5,10 +5,33 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/sentiolabs/open-events/internal/registry"
 )
+
+// Protobuf reserved keywords and reserved words
+var protobufKeywords = map[string]bool{
+	"syntax":   true,
+	"import":   true,
+	"package":  true,
+	"option":   true,
+	"message":  true,
+	"enum":     true,
+	"service":  true,
+	"rpc":      true,
+	"returns":  true,
+	"reserved": true,
+	"repeated": true,
+	"optional": true,
+	"required": true,
+	"oneof":    true,
+	"map":      true,
+	"extend":   true,
+	"extends":  true,
+	"group":    true,
+	"to":       true,
+	"max":      true,
+}
 
 func ProtoPackage(namespace string, version int) (string, error) {
 	if version <= 0 {
@@ -99,12 +122,21 @@ func namespaceParts(namespace string) ([]string, error) {
 		if startsWithDigit(raw) {
 			return nil, fmt.Errorf("protobuf namespace segment %q starts with a digit", raw)
 		}
+		// Check for ASCII-only and valid characters
 		for _, r := range raw {
-			if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_') {
-				return nil, fmt.Errorf("protobuf namespace segment %q is invalid; use letters, digits, or underscore", raw)
+			if r > 127 {
+				return nil, fmt.Errorf("protobuf namespace segment %q contains non-ASCII character", raw)
+			}
+			if !isASCIILetter(r) && !isASCIIDigit(r) && r != '_' {
+				return nil, fmt.Errorf("protobuf namespace segment %q is invalid; use ASCII letters, digits, or underscore", raw)
 			}
 		}
-		parts = append(parts, strings.ToLower(raw))
+		lower := strings.ToLower(raw)
+		// Check if lowercase version is a keyword
+		if isProtobufKeyword(lower) {
+			return nil, fmt.Errorf("protobuf namespace segment %q is a reserved keyword", raw)
+		}
+		parts = append(parts, lower)
 	}
 
 	return parts, nil
@@ -118,6 +150,17 @@ func upperIdentifier(raw string) (string, error) {
 
 	if startsWithDigit(raw) {
 		return "", fmt.Errorf("name starts with a digit")
+	}
+
+	// Check for non-ASCII and unsupported characters
+	for _, r := range raw {
+		if r > 127 {
+			return "", fmt.Errorf("name contains non-ASCII character: %q", string(r))
+		}
+		// Allow letters, digits, underscore, hyphen (hyphen will be converted to underscore)
+		if !isASCIILetter(r) && !isASCIIDigit(r) && r != '_' && r != '-' {
+			return "", fmt.Errorf("name contains unsupported character: %q", string(r))
+		}
 	}
 
 	parts := splitIdentifier(raw)
@@ -165,14 +208,14 @@ func splitIdentifier(raw string) []string {
 	}
 
 	for i, r := range runes {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+		if !isASCIILetter(r) && !isASCIIDigit(r) {
 			flush()
 			continue
 		}
 		if len(current) > 0 {
 			prev := runes[i-1]
-			nextLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
-			if unicode.IsUpper(r) && (unicode.IsLower(prev) || unicode.IsUpper(prev) && nextLower) {
+			nextLower := i+1 < len(runes) && isASCIILower(runes[i+1])
+			if isASCIIUpper(r) && (isASCIILower(prev) || isASCIIUpper(prev) && nextLower) {
 				flush()
 			}
 		}
@@ -185,7 +228,89 @@ func splitIdentifier(raw string) []string {
 
 func startsWithDigit(s string) bool {
 	for _, r := range s {
-		return unicode.IsDigit(r)
+		return isASCIIDigit(r)
 	}
 	return false
+}
+
+func isASCIILetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+func isASCIIDigit(r rune) bool {
+	return r >= '0' && r <= '9'
+}
+
+func isASCIIUpper(r rune) bool {
+	return r >= 'A' && r <= 'Z'
+}
+
+func isASCIILower(r rune) bool {
+	return r >= 'a' && r <= 'z'
+}
+
+func isProtobufKeyword(name string) bool {
+	return protobufKeywords[strings.ToLower(name)]
+}
+
+// isValidProtoIdentifier checks if a string is a valid protobuf identifier:
+// ASCII-only, starts with letter or underscore, contains only letters/digits/underscore,
+// and is not a reserved keyword.
+func isValidProtoIdentifier(name string) error {
+	if name == "" {
+		return fmt.Errorf("identifier must not be empty")
+	}
+
+	// Check first character
+	if len(name) > 0 {
+		first := rune(name[0])
+		if !isASCIILetter(first) && first != '_' {
+			return fmt.Errorf("identifier must start with a letter or underscore, got %q", string(first))
+		}
+	}
+
+	// Check all characters are ASCII alphanumeric or underscore
+	for _, r := range name {
+		if r > 127 {
+			return fmt.Errorf("identifier contains non-ASCII character: %q", string(r))
+		}
+		if !isASCIILetter(r) && !isASCIIDigit(r) && r != '_' {
+			return fmt.Errorf("identifier contains invalid character: %q", string(r))
+		}
+	}
+
+	// Check if it's a keyword
+	if isProtobufKeyword(name) {
+		return fmt.Errorf("identifier %q is a reserved keyword", name)
+	}
+
+	return nil
+}
+
+// isValidProtoMessageName checks if a generated message name is valid.
+func isValidProtoMessageName(name string) error {
+	if name == "" {
+		return fmt.Errorf("message name must not be empty")
+	}
+
+	// Check first character is uppercase letter
+	if len(name) > 0 {
+		first := rune(name[0])
+		if !isASCIIUpper(first) {
+			return fmt.Errorf("message name must start with uppercase letter, got %q", name)
+		}
+	}
+
+	// Check all characters are ASCII alphanumeric
+	for _, r := range name {
+		if r > 127 {
+			return fmt.Errorf("message name contains non-ASCII character in %q", name)
+		}
+		if !isASCIILetter(r) && !isASCIIDigit(r) {
+			return fmt.Errorf("message name contains invalid character in %q", name)
+		}
+	}
+
+	// Message names don't need keyword check as they follow PascalCase convention
+	return nil
 }

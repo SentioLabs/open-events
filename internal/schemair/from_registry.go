@@ -8,6 +8,11 @@ import (
 )
 
 func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
+	// Validate that we have exactly one version
+	if len(reg.Events) == 0 {
+		return Registry{}, fmt.Errorf("registry has no events; cannot infer version")
+	}
+
 	filesByVersion := make(map[int][]registry.Event)
 	versions := make([]int, 0, len(reg.Events))
 	seenVersions := make(map[int]struct{}, len(reg.Events))
@@ -20,6 +25,10 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 		versions = append(versions, event.Version)
 	}
 	sort.Ints(versions)
+
+	if len(versions) > 1 {
+		return Registry{}, fmt.Errorf("registry contains multiple versions (%v); FromRegistry requires exactly one version per file", versions)
+	}
 
 	files := make([]File, 0, len(versions))
 	for _, version := range versions {
@@ -45,8 +54,33 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 			return Registry{}, err
 		}
 
+		// Track generated message names to detect collisions
+		messageNames := make(map[string]string) // map[generatedName]eventKey
+		messageNames["Client"] = "Client"
+		messageNames["Context"] = "Context"
+
 		messages := []Message{clientMessage(), context}
 		for _, event := range events {
+			// Validate and track envelope message name
+			envelopeName := EventMessageName(event)
+			if err := isValidProtoMessageName(envelopeName); err != nil {
+				return Registry{}, fmt.Errorf("event %q generates invalid message name %q: %w", event.Name, envelopeName, err)
+			}
+			if existing, exists := messageNames[envelopeName]; exists {
+				return Registry{}, fmt.Errorf("message name collision: events %q and %q both generate message name %q", existing, event.Name, envelopeName)
+			}
+			messageNames[envelopeName] = event.Name
+
+			// Validate and track properties message name
+			propsName := PropertiesMessageName(event)
+			if err := isValidProtoMessageName(propsName); err != nil {
+				return Registry{}, fmt.Errorf("event %q generates invalid properties message name %q: %w", event.Name, propsName, err)
+			}
+			if existing, exists := messageNames[propsName]; exists {
+				return Registry{}, fmt.Errorf("message name collision: events %q and %q both generate message name %q", existing, event.Name, propsName)
+			}
+			messageNames[propsName] = event.Name
+
 			properties, err := lowerPropertiesMessage(event, lock)
 			if err != nil {
 				return Registry{}, err
@@ -82,12 +116,36 @@ func clientMessage() Message {
 
 func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message, error) {
 	message := Message{Name: "Context", Fields: make([]Field, 0, len(context)), Enums: []Enum{}}
+	usedNumbers := make(map[int]string) // map[protoNumber]fieldName for duplicate detection
+
 	for _, name := range sortedRegistryFieldNames(context) {
 		field := context[name]
+
+		// Validate field name is a valid protobuf identifier
+		if err := isValidProtoIdentifier(name); err != nil {
+			return Message{}, fmt.Errorf("context.%s: %w", name, err)
+		}
+
 		locked, ok := lock.Context[name]
 		if !ok {
 			return Message{}, fmt.Errorf("schema lock is missing context.%s", name)
 		}
+
+		// Validate StableID matches field name
+		if locked.StableID != name {
+			return Message{}, fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
+			return Message{}, err
+		}
+
+		// Check for duplicate numbers
+		if existing, exists := usedNumbers[locked.ProtoNumber]; exists {
+			return Message{}, fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
+		}
+		usedNumbers[locked.ProtoNumber] = name
 
 		lowered, enum, err := lowerField(field, locked.ProtoNumber, "context."+name)
 		if err != nil {
@@ -109,12 +167,36 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 	}
 
 	message := Message{Name: PropertiesMessageName(event), Fields: make([]Field, 0, len(event.Properties)), Enums: []Enum{}}
+	usedNumbers := make(map[int]string) // map[protoNumber]fieldName for duplicate detection
+
 	for _, name := range sortedRegistryFieldNames(event.Properties) {
 		field := event.Properties[name]
+
+		// Validate field name is a valid protobuf identifier
+		if err := isValidProtoIdentifier(name); err != nil {
+			return Message{}, fmt.Errorf("events.%s.properties.%s: %w", key, name, err)
+		}
+
 		locked, ok := lockedEvent.Properties[name]
 		if !ok {
 			return Message{}, fmt.Errorf("schema lock is missing events.%s.properties.%s", key, name)
 		}
+
+		// Validate StableID matches field name
+		if locked.StableID != name {
+			return Message{}, fmt.Errorf("schema lock StableID mismatch for events.%s.properties.%s: lock has %q, expected %q", key, name, locked.StableID, name)
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber("events."+key+".properties."+name, locked.ProtoNumber); err != nil {
+			return Message{}, err
+		}
+
+		// Check for duplicate numbers
+		if existing, exists := usedNumbers[locked.ProtoNumber]; exists {
+			return Message{}, fmt.Errorf("events.%s.properties has duplicate proto number %d used by both %q and %q", key, locked.ProtoNumber, existing, name)
+		}
+		usedNumbers[locked.ProtoNumber] = name
 
 		lowered, enum, err := lowerField(field, locked.ProtoNumber, "events."+key+".properties."+name)
 		if err != nil {
@@ -177,6 +259,9 @@ func lowerField(field registry.Field, number int, path string) (Field, *Enum, er
 		lowered.Optional = true
 	case registry.FieldTypeEnum:
 		enumName := EnumTypeName(field.Name)
+		if err := isValidProtoMessageName(enumName); err != nil {
+			return Field{}, nil, fmt.Errorf("%s: enum type name %q is invalid: %w", path, enumName, err)
+		}
 		values, err := buildEnumValues(enumName, field.Values, path)
 		if err != nil {
 			return Field{}, nil, err

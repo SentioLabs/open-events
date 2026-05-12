@@ -112,3 +112,20 @@ func TestBuildEnumValuesRejectsCollisions(t *testing.T) {
 		t.Fatalf("buildEnumValues() error = %q, want collision message", err)
 	}
 }
+
+func TestEnumValueNameRejectsSlash(t *testing.T) {
+	_, err := EnumValueName("PaymentMethod", "has/slash")
+	if err == nil {
+		t.Fatalf("EnumValueName() error = nil, want error for slash")
+	}
+	if !strings.Contains(err.Error(), "/") {
+		t.Fatalf("EnumValueName() error = %q, want mention of slash", err)
+	}
+}
+
+func TestEnumValueNameRejectsNonASCII(t *testing.T) {
+	_, err := EnumValueName("PaymentMethod", "café")
+	if err == nil {
+		t.Fatalf("EnumValueName() error = nil, want error for non-ASCII")
+	}
+}
