@@ -308,6 +308,14 @@ func TestValidatePinnedPythonRuntime(t *testing.T) {
 	}
 }
 
+func TestDemoExampleHasCommittedLock(t *testing.T) {
+	lockCheck := exec.Command("go", "run", "../../cmd/openevents", "lock", "check", "../../examples/demo")
+	lockCheckOut, err := lockCheck.CombinedOutput()
+	if err != nil {
+		t.Fatalf("lock check demo failed: %v\n%s", err, lockCheckOut)
+	}
+}
+
 func TestValidateAndGenerateDemoRegistry(t *testing.T) {
 	t.Run("go_python", func(t *testing.T) {
 		validate := exec.Command("go", "run", "../../cmd/openevents", "validate", "../../examples/demo")

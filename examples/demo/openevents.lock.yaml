@@ -1,0 +1,126 @@
+version: 1
+context:
+    platform:
+        stable_id: platform
+        proto_number: 1
+    session_id:
+        stable_id: session_id
+        proto_number: 2
+    tenant_id:
+        stable_id: tenant_id
+        proto_number: 3
+    user_id:
+        stable_id: user_id
+        proto_number: 4
+events:
+    checkout.completed@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            cart_id:
+                stable_id: cart_id
+                proto_number: 1
+            coupon_code:
+                stable_id: coupon_code
+                proto_number: 2
+            order_id:
+                stable_id: order_id
+                proto_number: 3
+            payment_method:
+                stable_id: payment_method
+                proto_number: 4
+            total_cents:
+                stable_id: total_cents
+                proto_number: 5
+        reserved: []
+    checkout.started@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            cart_id:
+                stable_id: cart_id
+                proto_number: 1
+            currency:
+                stable_id: currency
+                proto_number: 2
+            item_count:
+                stable_id: item_count
+                proto_number: 3
+            subtotal_cents:
+                stable_id: subtotal_cents
+                proto_number: 4
+        reserved: []
+    search.performed@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            filters:
+                stable_id: filters
+                proto_number: 1
+            query:
+                stable_id: query
+                proto_number: 2
+            result_count:
+                stable_id: result_count
+                proto_number: 3
+        reserved: []
