@@ -74,7 +74,12 @@ func discoverYAMLFiles(path string) ([]string, Diagnostics) {
 		}
 
 		name := entry.Name()
-		if name == "openevents.lock.yaml" {
+
+		rel, relErr := filepath.Rel(path, current)
+		if relErr != nil {
+			return relErr
+		}
+		if rel == "openevents.lock.yaml" {
 			return nil
 		}
 
@@ -82,8 +87,6 @@ func discoverYAMLFiles(path string) ([]string, Diagnostics) {
 		if ext != ".yaml" && ext != ".yml" {
 			return nil
 		}
-
-		rel, relErr := filepath.Rel(path, current)
 		if relErr != nil {
 			return relErr
 		}

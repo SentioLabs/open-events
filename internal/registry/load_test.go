@@ -121,6 +121,37 @@ func TestLoadDirectoryIgnoresOpenEventsLockFile(t *testing.T) {
 	}
 }
 
+func TestLoadDirectoryLoadsNestedOpenEventsLockFile(t *testing.T) {
+	tempDir := t.TempDir()
+
+	root := "openevents: 0.1.0\nnamespace: com.example.product\n"
+	if err := os.WriteFile(filepath.Join(tempDir, "openevents.yaml"), []byte(root), 0o644); err != nil {
+		t.Fatalf("WriteFile(openevents.yaml): %v", err)
+	}
+
+	eventsDir := filepath.Join(tempDir, "events")
+	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", eventsDir, err)
+	}
+
+	nested := "events:\n  nested.lock_event:\n    version: 1\n    status: active\n    owner: eng\n    producer: app\n    destination:\n      queue: analytics\n"
+	if err := os.WriteFile(filepath.Join(eventsDir, "openevents.lock.yaml"), []byte(nested), 0o644); err != nil {
+		t.Fatalf("WriteFile(events/openevents.lock.yaml): %v", err)
+	}
+
+	loaded, diags := Load(tempDir)
+	if diags.HasErrors() {
+		t.Fatalf("Load(%q) diagnostics = %v", tempDir, diags)
+	}
+
+	if got, want := len(loaded.Events), 1; got != want {
+		t.Fatalf("len(loaded.Events) = %d, want %d", got, want)
+	}
+	if got, want := loaded.Events[0].Name, "nested.lock_event"; got != want {
+		t.Fatalf("loaded.Events[0].Name = %q, want %q", got, want)
+	}
+}
+
 func TestLoadConflictingSingletonDiagnosticLocation(t *testing.T) {
 	tempDir := t.TempDir()
 	aPath := filepath.Join(tempDir, "a.yaml")
