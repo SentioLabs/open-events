@@ -85,6 +85,117 @@ func copyDir(t *testing.T, src string, dst string) {
 	}
 }
 
+func runBufGeneratedGoPythonInterop(t *testing.T) {
+	t.Helper()
+
+	temp := t.TempDir()
+	demoCopy := filepath.Join(temp, "demo")
+	copyDir(t, "../../examples/demo", demoCopy)
+
+	runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "update", demoCopy)
+	runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "check", demoCopy)
+
+	out := filepath.Join(temp, "proto-out")
+	runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "generate", "proto", demoCopy, out)
+
+	bufPath := ensureBuf(t)
+	toolsBin := filepath.Dir(bufPath)
+	bufEnv := []string{"PATH=" + toolsBin + string(os.PathListSeparator) + os.Getenv("PATH")}
+	runCommand(t, out, bufEnv, bufPath, "generate", ".")
+
+	goGenerated := filepath.Join(out, "gen", "go", "com", "acme", "storefront", "v1", "events.pb.go")
+	pythonGenerated := filepath.Join(out, "gen", "python", "com", "acme", "storefront", "v1", "events_pb2.py")
+	if _, err := os.Stat(goGenerated); err != nil {
+		t.Fatalf("expected generated file %s to exist: %v", goGenerated, err)
+	}
+	if _, err := os.Stat(pythonGenerated); err != nil {
+		t.Fatalf("expected generated file %s to exist: %v", pythonGenerated, err)
+	}
+
+	goModuleDir := filepath.Join(temp, "bufinterop")
+	if err := os.MkdirAll(filepath.Join(goModuleDir, "generated"), 0o755); err != nil {
+		t.Fatalf("mkdir go module dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(goModuleDir, "go.mod"), []byte("module bufinterop\n\ngo 1.24\n\nrequire google.golang.org/protobuf v1.36.6\n"), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	generatedPBContent, err := os.ReadFile(goGenerated)
+	if err != nil {
+		t.Fatalf("read generated go protobuf: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(goModuleDir, "generated", "events.pb.go"), generatedPBContent, 0o644); err != nil {
+		t.Fatalf("write copied go protobuf: %v", err)
+	}
+
+	payloadFile := filepath.Join(temp, "event.pb")
+	goProgram := `package main
+
+import (
+	"os"
+
+	events "bufinterop/generated"
+	"google.golang.org/protobuf/proto"
+)
+
+func main() {
+	e := &events.CheckoutCompletedV1{
+		EventName:    "checkout.completed",
+		EventVersion: 1,
+		Context: &events.Context{
+			TenantId: proto.String("tenant-42"),
+		},
+		Properties: &events.CheckoutCompletedV1Properties{
+			OrderId:    proto.String("ord-001"),
+			TotalCents: proto.Int64(1099),
+		},
+	}
+
+	b, err := proto.Marshal(e)
+	if err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(os.Args[1], b, 0o644); err != nil {
+		panic(err)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(goModuleDir, "main.go"), []byte(goProgram), 0o644); err != nil {
+		t.Fatalf("write go interop program: %v", err)
+	}
+
+	runCommand(t, goModuleDir, nil, "go", "mod", "tidy")
+	runCommand(t, goModuleDir, nil, "go", "run", ".", payloadFile)
+
+	pyScript := `import sys
+from com.acme.storefront.v1 import events_pb2
+
+with open(sys.argv[1], "rb") as handle:
+    payload = handle.read()
+
+event = events_pb2.CheckoutCompletedV1()
+event.ParseFromString(payload)
+
+assert event.event_name == "checkout.completed"
+assert event.event_version == 1
+assert event.context.tenant_id == "tenant-42"
+assert event.properties.order_id == "ord-001"
+assert event.properties.total_cents == 1099
+`
+	pyScriptPath := filepath.Join(temp, "check_buf_event.py")
+	if err := os.WriteFile(pyScriptPath, []byte(pyScript), 0o644); err != nil {
+		t.Fatalf("write python interop script: %v", err)
+	}
+
+	pythonPath := filepath.Join(out, "gen", "python")
+	if _, err := exec.Command("python3", "-c", "import google.protobuf").CombinedOutput(); err != nil {
+		pythonDeps := filepath.Join(temp, "pydeps")
+		runCommand(t, "", nil, "python3", "-m", "pip", "install", "--quiet", "--target", pythonDeps, "protobuf")
+		pythonPath = pythonDeps + string(os.PathListSeparator) + pythonPath
+	}
+
+	runCommand(t, "", []string{"PYTHONPATH=" + pythonPath}, "python3", pyScriptPath, payloadFile)
+}
+
 func TestValidateAndGenerateDemoRegistry(t *testing.T) {
 	t.Run("go_python", func(t *testing.T) {
 		validate := exec.Command("go", "run", "../../cmd/openevents", "validate", "../../examples/demo")
@@ -186,6 +297,10 @@ assert event.properties.total_cents == 1099
 		if err != nil {
 			t.Fatalf("run generated python script failed: %v\n%s", err, runPyOut)
 		}
+	})
+
+	t.Run("buf_go_python_interop", func(t *testing.T) {
+		runBufGeneratedGoPythonInterop(t)
 	})
 
 	t.Run("TestValidateAndGenerateDemoProto", func(t *testing.T) {
