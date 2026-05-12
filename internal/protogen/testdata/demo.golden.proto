@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package com.acme.storefront.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Client {
+  optional string name = 1;
+  optional string version = 2;
+}
+
+message OrderCreated {
+  string event_id = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  optional Client client = 3;
+  repeated LineItem items = 4;
+  optional OrderStatus status = 5;
+  int64 priority = 6;
+  optional double total = 7;
+  optional bool discounted = 8;
+  optional string order_date = 9;
+
+  enum OrderStatus {
+    ORDER_STATUS_UNSPECIFIED = 0;
+    ORDER_STATUS_CREATED = 1;
+    ORDER_STATUS_PAID = 2;
+  }
+}
+
+message LineItem {
+  string sku = 1;
+  optional int64 quantity = 2;
+}
+
+message Catalog {
+  enum CatalogState {
+    CATALOG_STATE_UNSPECIFIED = 0;
+  }
+}

@@ -1,0 +1,357 @@
+package protogen
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"strings"
+	"unicode"
+
+	"github.com/sentiolabs/open-events/internal/schemair"
+	"gopkg.in/yaml.v3"
+)
+
+const (
+	metadataVersion = 1
+	metadataBackend = "protobuf"
+)
+
+// Render writes protobuf backend files for reg into outDir.
+func Render(reg schemair.Registry, outDir string) error {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return fmt.Errorf("create output directory %q: %w", outDir, err)
+	}
+
+	if err := os.WriteFile(filepath.Join(outDir, "buf.yaml"), RenderBufYAML(), 0o644); err != nil {
+		return fmt.Errorf("write buf.yaml: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "buf.gen.yaml"), RenderBufGenYAML(), 0o644); err != nil {
+		return fmt.Errorf("write buf.gen.yaml: %w", err)
+	}
+
+	for _, file := range reg.Files {
+		protoBytes, err := RenderFile(file)
+		if err != nil {
+			return err
+		}
+
+		protoPath := filepath.Join(outDir, "proto", filepath.FromSlash(file.Path))
+		if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
+			return fmt.Errorf("create proto directory for %q: %w", file.Path, err)
+		}
+		if err := os.WriteFile(protoPath, protoBytes, 0o644); err != nil {
+			return fmt.Errorf("write proto file %q: %w", file.Path, err)
+		}
+	}
+
+	metadataBytes, err := RenderMetadata(reg)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(outDir, "openevents.metadata.yaml"), metadataBytes, 0o644); err != nil {
+		return fmt.Errorf("write openevents.metadata.yaml: %w", err)
+	}
+
+	return nil
+}
+
+// RenderFile renders one schema IR file as a proto3 file.
+func RenderFile(file schemair.File) ([]byte, error) {
+	hasTimestamp, err := fileUsesTimestamp(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var b strings.Builder
+	b.WriteString("syntax = \"proto3\";\n\n")
+	fmt.Fprintf(&b, "package %s;\n", file.Package)
+	if hasTimestamp {
+		b.WriteString("\nimport \"google/protobuf/timestamp.proto\";\n")
+	}
+	b.WriteString("\n")
+
+	for i, message := range file.Messages {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		if err := renderMessage(&b, message); err != nil {
+			return nil, err
+		}
+	}
+
+	return []byte(b.String()), nil
+}
+
+// RenderBufYAML renders the Buf module configuration.
+func RenderBufYAML() []byte {
+	return []byte("version: v2\nmodules:\n  - path: proto\n")
+}
+
+// RenderBufGenYAML renders the Buf generation configuration.
+func RenderBufGenYAML() []byte {
+	return []byte("version: v2\nplugins:\n  - remote: buf.build/protocolbuffers/go\n    out: gen/go\n    opt: paths=source_relative\n  - remote: buf.build/protocolbuffers/python\n    out: gen/python\n")
+}
+
+// RenderMetadata renders deterministic protobuf sidecar metadata for reg.
+func RenderMetadata(reg schemair.Registry) ([]byte, error) {
+	root := metadataRoot{
+		Version:   metadataVersion,
+		Backend:   metadataBackend,
+		Namespace: reg.Namespace,
+		Files:     make([]metadataFile, 0, len(reg.Files)),
+	}
+
+	for _, file := range reg.Files {
+		metadataFile := metadataFile{
+			Path:     path.Join("proto", file.Path),
+			Package:  file.Package,
+			Messages: make([]metadataMessage, 0, len(file.Messages)),
+		}
+		for _, message := range file.Messages {
+			metadataMessage := metadataMessage{
+				Name:        message.Name,
+				Description: message.Description,
+				Fields:      make([]metadataField, 0, len(message.Fields)),
+				Enums:       make([]metadataEnum, 0, len(message.Enums)),
+			}
+			for _, field := range message.Fields {
+				kind, fieldType, err := typeRefKindAndType(field, message.Name+"."+field.Name)
+				if err != nil {
+					return nil, err
+				}
+				metadataMessage.Fields = append(metadataMessage.Fields, metadataField{
+					Name:        field.Name,
+					Number:      field.Number,
+					Kind:        kind,
+					Type:        fieldType,
+					Repeated:    field.Repeated,
+					Optional:    field.Optional,
+					Required:    field.Required,
+					Description: field.Description,
+				})
+			}
+			for _, enum := range message.Enums {
+				metadataEnum := metadataEnum{
+					Name:   enum.Name,
+					Values: make([]metadataEnumValue, 0, len(enum.Values)),
+				}
+				for _, value := range enum.Values {
+					metadataEnum.Values = append(metadataEnum.Values, metadataEnumValue{
+						Name:     value.Name,
+						Original: value.Original,
+						Number:   value.Number,
+					})
+				}
+				metadataMessage.Enums = append(metadataMessage.Enums, metadataEnum)
+			}
+			metadataFile.Messages = append(metadataFile.Messages, metadataMessage)
+		}
+		root.Files = append(root.Files, metadataFile)
+	}
+
+	var buf bytes.Buffer
+	encoder := yaml.NewEncoder(&buf)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(root); err != nil {
+		return nil, fmt.Errorf("render metadata: %w", err)
+	}
+	if err := encoder.Close(); err != nil {
+		return nil, fmt.Errorf("render metadata: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func renderMessage(b *strings.Builder, message schemair.Message) error {
+	fmt.Fprintf(b, "message %s {\n", message.Name)
+	for _, field := range message.Fields {
+		fieldType, err := protoFieldType(field, message.Name+"."+field.Name)
+		if err != nil {
+			return err
+		}
+
+		label := ""
+		switch {
+		case field.Repeated:
+			label = "repeated "
+		case field.Optional:
+			label = "optional "
+		}
+		fmt.Fprintf(b, "  %s%s %s = %d;\n", label, fieldType, field.Name, field.Number)
+	}
+
+	if len(message.Fields) > 0 && len(message.Enums) > 0 {
+		b.WriteString("\n")
+	}
+	for i, enum := range message.Enums {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		renderEnum(b, enum)
+	}
+	b.WriteString("}\n")
+
+	return nil
+}
+
+func renderEnum(b *strings.Builder, enum schemair.Enum) {
+	fmt.Fprintf(b, "  enum %s {\n", enum.Name)
+	fmt.Fprintf(b, "    %s = 0;\n", enumZeroValueName(enum.Name))
+	for _, value := range enum.Values {
+		fmt.Fprintf(b, "    %s = %d;\n", value.Name, value.Number)
+	}
+	b.WriteString("  }\n")
+}
+
+func fileUsesTimestamp(file schemair.File) (bool, error) {
+	hasTimestamp := false
+	for _, message := range file.Messages {
+		for _, field := range message.Fields {
+			kind, fieldType, err := typeRefKindAndType(field, message.Name+"."+field.Name)
+			if err != nil {
+				return false, err
+			}
+			if kind == "scalar" && fieldType == "timestamp" {
+				hasTimestamp = true
+			}
+		}
+	}
+	return hasTimestamp, nil
+}
+
+func protoFieldType(field schemair.Field, fieldPath string) (string, error) {
+	kind, fieldType, err := typeRefKindAndType(field, fieldPath)
+	if err != nil {
+		return "", err
+	}
+
+	switch kind {
+	case "scalar":
+		switch fieldType {
+		case "string", "uuid", "date":
+			return "string", nil
+		case "integer":
+			return "int64", nil
+		case "number":
+			return "double", nil
+		case "boolean":
+			return "bool", nil
+		case "timestamp":
+			return "google.protobuf.Timestamp", nil
+		default:
+			return "", fmt.Errorf("field %s has unsupported scalar type %q", fieldPath, fieldType)
+		}
+	case "message", "enum":
+		return fieldType, nil
+	default:
+		return "", fmt.Errorf("field %s has unsupported TypeRef kind %q", fieldPath, kind)
+	}
+}
+
+func typeRefKindAndType(field schemair.Field, fieldPath string) (string, string, error) {
+	count := 0
+	kind := ""
+	fieldType := ""
+	if field.Type.Scalar != "" {
+		count++
+		kind = "scalar"
+		fieldType = field.Type.Scalar
+	}
+	if field.Type.Message != "" {
+		count++
+		kind = "message"
+		fieldType = field.Type.Message
+	}
+	if field.Type.Enum != "" {
+		count++
+		kind = "enum"
+		fieldType = field.Type.Enum
+	}
+	if count != 1 {
+		return "", "", fmt.Errorf("field %s must have exactly one TypeRef member set (got %d)", fieldPath, count)
+	}
+	return kind, fieldType, nil
+}
+
+func enumZeroValueName(enumName string) string {
+	parts := splitEnumName(enumName)
+	if len(parts) == 0 {
+		return "ENUM_UNSPECIFIED"
+	}
+	return strings.Join(parts, "_") + "_UNSPECIFIED"
+}
+
+func splitEnumName(enumName string) []string {
+	var parts []string
+	var part []rune
+	runes := []rune(enumName)
+	flush := func() {
+		if len(part) == 0 {
+			return
+		}
+		parts = append(parts, string(part))
+		part = nil
+	}
+
+	for i, r := range runes {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			flush()
+			continue
+		}
+		if len(part) > 0 {
+			prev := runes[i-1]
+			nextLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
+			if unicode.IsUpper(r) && (unicode.IsLower(prev) || unicode.IsUpper(prev) && nextLower) {
+				flush()
+			}
+		}
+		part = append(part, unicode.ToUpper(r))
+	}
+	flush()
+
+	return parts
+}
+
+type metadataRoot struct {
+	Version   int            `yaml:"version"`
+	Backend   string         `yaml:"backend"`
+	Namespace string         `yaml:"namespace"`
+	Files     []metadataFile `yaml:"files"`
+}
+
+type metadataFile struct {
+	Path     string            `yaml:"path"`
+	Package  string            `yaml:"package"`
+	Messages []metadataMessage `yaml:"messages"`
+}
+
+type metadataMessage struct {
+	Name        string          `yaml:"name"`
+	Description string          `yaml:"description,omitempty"`
+	Fields      []metadataField `yaml:"fields"`
+	Enums       []metadataEnum  `yaml:"enums"`
+}
+
+type metadataField struct {
+	Name        string `yaml:"name"`
+	Number      int    `yaml:"number"`
+	Kind        string `yaml:"kind"`
+	Type        string `yaml:"type"`
+	Repeated    bool   `yaml:"repeated"`
+	Optional    bool   `yaml:"optional"`
+	Required    bool   `yaml:"required"`
+	Description string `yaml:"description,omitempty"`
+}
+
+type metadataEnum struct {
+	Name   string              `yaml:"name"`
+	Values []metadataEnumValue `yaml:"values"`
+}
+
+type metadataEnumValue struct {
+	Name     string `yaml:"name"`
+	Original string `yaml:"original"`
+	Number   int    `yaml:"number"`
+}
