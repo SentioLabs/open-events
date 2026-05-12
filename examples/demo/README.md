@@ -42,7 +42,7 @@ Install local Buf tooling and run checks/generation:
 bash scripts/install-buf.sh
 .tools/bin/buf lint ./build/demo-proto
 .tools/bin/buf build ./build/demo-proto
-PATH="$(pwd)/.tools/bin:$PATH" .tools/bin/buf generate --template ./build/demo-proto/buf.gen.yaml ./build/demo-proto
+(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
 
 ## Expected output tree under `./build/demo-proto`
@@ -70,7 +70,7 @@ go run ./cmd/openevents generate proto ./examples/demo ./build/demo-proto
 bash scripts/install-buf.sh
 .tools/bin/buf lint ./build/demo-proto
 .tools/bin/buf build ./build/demo-proto
-PATH="$(pwd)/.tools/bin:$PATH" .tools/bin/buf generate --template ./build/demo-proto/buf.gen.yaml ./build/demo-proto
+(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
 
 Keep generated output under ignored build directories (for example `build/`) instead of committing generated language artifacts.

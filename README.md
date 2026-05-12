@@ -85,7 +85,7 @@ Run Buf against the generated output:
 ```bash
 .tools/bin/buf lint ./build/demo-proto
 .tools/bin/buf build ./build/demo-proto
-.tools/bin/buf generate ./build/demo-proto
+(cd ./build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
 ```
 
 The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates Go and Python code, emits JSON with generated Go types, and decodes it with generated Python types.
