@@ -28,6 +28,12 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 	if err := validateLockNumbers(existing); err != nil {
 		return Lock{}, err
 	}
+	if err := validateActiveStableIDs(existing, reg); err != nil {
+		return Lock{}, err
+	}
+	if err := validateLockDuplicates(existing); err != nil {
+		return Lock{}, err
+	}
 
 	updated := Lock{
 		Version: LockVersion,
@@ -69,12 +75,7 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		}
 
 		for _, name := range sortedEnvelopeFieldNames() {
-			number := envelopeNumbers[name]
-			stableID := name
-			if locked, ok := existingEvent.Envelope[name]; ok && locked.StableID != "" {
-				stableID = locked.StableID
-			}
-			updatedEvent.Envelope[name] = LockedField{StableID: stableID, ProtoNumber: number}
+			updatedEvent.Envelope[name] = LockedField{StableID: name, ProtoNumber: envelopeNumbers[name]}
 		}
 
 		propertiesMax := 0
@@ -132,6 +133,9 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 	if err := validateLockNumbers(lock); err != nil {
 		return err
 	}
+	if err := validateActiveStableIDs(lock, reg); err != nil {
+		return err
+	}
 	if err := validateLockDuplicates(lock); err != nil {
 		return err
 	}
@@ -150,8 +154,8 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		if !ok {
 			return fmt.Errorf("schema lock is stale: context.%s is missing", name)
 		}
-		if actual.ProtoNumber != exp.ProtoNumber {
-			return fmt.Errorf("schema lock is stale: context.%s number mismatch: got %d want %d", name, actual.ProtoNumber, exp.ProtoNumber)
+		if err := compareLockedField("context."+name, actual, exp); err != nil {
+			return err
 		}
 	}
 
@@ -177,8 +181,8 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			if !ok {
 				return fmt.Errorf("schema lock is stale: events.%s.envelope.%s is missing", key, name)
 			}
-			if actual.ProtoNumber != exp.ProtoNumber {
-				return fmt.Errorf("schema lock is stale: events.%s.envelope.%s number mismatch: got %d want %d", key, name, actual.ProtoNumber, exp.ProtoNumber)
+			if err := compareLockedField("events."+key+".envelope."+name, actual, exp); err != nil {
+				return err
 			}
 		}
 		for _, name := range sortedLockedFieldNames(actualEvent.Envelope) {
@@ -192,8 +196,8 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			if !ok {
 				return fmt.Errorf("schema lock is stale: events.%s.properties.%s is missing", key, name)
 			}
-			if actual.ProtoNumber != exp.ProtoNumber {
-				return fmt.Errorf("schema lock is stale: events.%s.properties.%s number mismatch: got %d want %d", key, name, actual.ProtoNumber, exp.ProtoNumber)
+			if err := compareLockedField("events."+key+".properties."+name, actual, exp); err != nil {
+				return err
 			}
 		}
 		if err := compareReservedFields(key, actualEvent.Reserved, expectedEvent.Reserved); err != nil {
@@ -206,6 +210,16 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		}
 	}
 
+	return nil
+}
+
+func compareLockedField(path string, actual LockedField, expected LockedField) error {
+	if actual.StableID != expected.StableID {
+		return fmt.Errorf("schema lock is stale: %s stable ID mismatch: got %q want %q", path, actual.StableID, expected.StableID)
+	}
+	if actual.ProtoNumber != expected.ProtoNumber {
+		return fmt.Errorf("schema lock is stale: %s number mismatch: got %d want %d", path, actual.ProtoNumber, expected.ProtoNumber)
+	}
 	return nil
 }
 
@@ -256,6 +270,9 @@ func compareReservedFields(eventKey string, actual []ReservedField, expected []R
 	}
 	if err := checkDuplicateReservedNumbers(path, expected); err != nil {
 		return err
+	}
+	if !equalReservedFields(actual, sortedReservedFields(actual)) {
+		return fmt.Errorf("schema lock is stale: %s order mismatch", path)
 	}
 
 	actualByKey := make(map[reservedFieldKey]ReservedField, len(actual))
@@ -311,6 +328,61 @@ func lessReservedField(left ReservedField, right ReservedField) bool {
 		return left.StableID < right.StableID
 	}
 	return left.Reason < right.Reason
+}
+
+func equalReservedFields(left []ReservedField, right []ReservedField) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func validateActiveStableIDs(lock Lock, reg registry.Registry) error {
+	for _, name := range sortedLockedFieldNames(lock.Context) {
+		if err := validateStableID("context."+name, lock.Context[name].StableID, name); err != nil {
+			return err
+		}
+	}
+
+	for _, event := range reg.Events {
+		key := eventKey(event)
+		existingEvent, ok := lock.Events[key]
+		if !ok {
+			continue
+		}
+		for _, name := range sortedEnvelopeFieldNames() {
+			locked, ok := existingEvent.Envelope[name]
+			if !ok {
+				continue
+			}
+			if err := validateStableID("events."+key+".envelope."+name, locked.StableID, name); err != nil {
+				return err
+			}
+		}
+		for _, name := range sortedFieldNames(event.Properties) {
+			locked, ok := existingEvent.Properties[name]
+			if !ok {
+				continue
+			}
+			if err := validateStableID("events."+key+".properties."+name, locked.StableID, name); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateStableID(path string, actual string, expected string) error {
+	if actual != expected {
+		return fmt.Errorf("schema lock has invalid stable ID at %s: got %q want %q", path, actual, expected)
+	}
+	return nil
 }
 
 func validateLockNumbers(lock Lock) error {

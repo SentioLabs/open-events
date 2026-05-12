@@ -551,6 +551,310 @@ func TestCheckLockRejectsProtobufReservedNumbers(t *testing.T) {
 	}
 }
 
+func TestCheckLockRejectsTamperedActiveStableIDs(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id"},
+		},
+		Events: []registry.Event{event},
+	}
+	baseLock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+	key := eventKey(event)
+
+	tests := []struct {
+		name     string
+		tamper   func(Lock) Lock
+		wantPath string
+	}{
+		{
+			name: "context",
+			tamper: func(lock Lock) Lock {
+				field := lock.Context["tenant_id"]
+				field.StableID = "evil"
+				lock.Context["tenant_id"] = field
+				return lock
+			},
+			wantPath: "context.tenant_id",
+		},
+		{
+			name: "envelope",
+			tamper: func(lock Lock) Lock {
+				field := lock.Events[key].Envelope["event_name"]
+				field.StableID = "evil"
+				lock.Events[key].Envelope["event_name"] = field
+				return lock
+			},
+			wantPath: "events.checkout.completed@1.envelope.event_name",
+		},
+		{
+			name: "property",
+			tamper: func(lock Lock) Lock {
+				field := lock.Events[key].Properties["amount"]
+				field.StableID = "evil"
+				lock.Events[key].Properties["amount"] = field
+				return lock
+			},
+			wantPath: "events.checkout.completed@1.properties.amount",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lock := tt.tamper(cloneLockForTest(baseLock))
+			err := CheckLock(lock, reg)
+			if err == nil {
+				t.Fatalf("CheckLock() error = nil, want tampered StableID error")
+			}
+			if !strings.Contains(err.Error(), tt.wantPath) || !strings.Contains(strings.ToLower(err.Error()), "stable") {
+				t.Fatalf("CheckLock() error = %q, want stable ID error at %q", err, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestUpdateLockRejectsTamperedActiveStableIDs(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id"},
+		},
+		Events: []registry.Event{event},
+	}
+	baseLock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+	key := eventKey(event)
+
+	tests := []struct {
+		name     string
+		tamper   func(Lock) Lock
+		wantPath string
+	}{
+		{
+			name: "context",
+			tamper: func(lock Lock) Lock {
+				field := lock.Context["tenant_id"]
+				field.StableID = "evil"
+				lock.Context["tenant_id"] = field
+				return lock
+			},
+			wantPath: "context.tenant_id",
+		},
+		{
+			name: "envelope",
+			tamper: func(lock Lock) Lock {
+				field := lock.Events[key].Envelope["event_name"]
+				field.StableID = "evil"
+				lock.Events[key].Envelope["event_name"] = field
+				return lock
+			},
+			wantPath: "events.checkout.completed@1.envelope.event_name",
+		},
+		{
+			name: "property",
+			tamper: func(lock Lock) Lock {
+				field := lock.Events[key].Properties["amount"]
+				field.StableID = "evil"
+				lock.Events[key].Properties["amount"] = field
+				return lock
+			},
+			wantPath: "events.checkout.completed@1.properties.amount",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lock := tt.tamper(cloneLockForTest(baseLock))
+			_, err := UpdateLock(lock, reg)
+			if err == nil {
+				t.Fatalf("UpdateLock() error = nil, want tampered StableID error")
+			}
+			if !strings.Contains(err.Error(), tt.wantPath) || !strings.Contains(strings.ToLower(err.Error()), "stable") {
+				t.Fatalf("UpdateLock() error = %q, want stable ID error at %q", err, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestUpdateLockRejectsDuplicateExistingNumbers(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount":   {Name: "amount"},
+			"order_id": {Name: "order_id"},
+		},
+	}
+	key := eventKey(event)
+
+	tests := []struct {
+		name     string
+		existing Lock
+		reg      registry.Registry
+		wantPath string
+	}{
+		{
+			name: "context active active",
+			existing: Lock{Context: map[string]LockedField{
+				"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+				"region":    {StableID: "region", ProtoNumber: 1},
+			}},
+			reg: registry.Registry{Context: map[string]registry.Field{
+				"tenant_id": {Name: "tenant_id"},
+				"region":    {Name: "region"},
+			}},
+			wantPath: "context",
+		},
+		{
+			name: "property active active",
+			existing: Lock{Events: map[string]LockedEvent{
+				key: {Properties: map[string]LockedField{
+					"amount":   {StableID: "amount", ProtoNumber: 1},
+					"order_id": {StableID: "order_id", ProtoNumber: 1},
+				}},
+			}},
+			reg:      registry.Registry{Events: []registry.Event{event}},
+			wantPath: "events.checkout.completed@1.properties",
+		},
+		{
+			name: "property active reserved",
+			existing: Lock{Events: map[string]LockedEvent{
+				key: {
+					Properties: map[string]LockedField{
+						"amount": {StableID: "amount", ProtoNumber: 1},
+					},
+					Reserved: []ReservedField{{
+						Name:        "coupon_code",
+						StableID:    "coupon_code",
+						ProtoNumber: 1,
+						Reason:      "field removed",
+					}},
+				},
+			}},
+			reg: registry.Registry{Events: []registry.Event{{
+				Name:    event.Name,
+				Version: event.Version,
+				Properties: map[string]registry.Field{
+					"amount": {Name: "amount"},
+				},
+			}}},
+			wantPath: "events.checkout.completed@1.properties",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := UpdateLock(tt.existing, tt.reg)
+			if err == nil {
+				t.Fatalf("UpdateLock() error = nil, want duplicate number error")
+			}
+			if !strings.Contains(err.Error(), tt.wantPath) || !strings.Contains(err.Error(), "duplicate") {
+				t.Fatalf("UpdateLock() error = %q, want duplicate error at %q", err, tt.wantPath)
+			}
+		})
+	}
+}
+
+func TestCheckLockDoesNotMutateValidLockWithNilReserved(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+	lock := Lock{
+		Version: LockVersion,
+		Events: map[string]LockedEvent{
+			eventKey(event): {
+				Envelope: lockedEnvelopeForTest(),
+				Properties: map[string]LockedField{
+					"amount": {StableID: "amount", ProtoNumber: 1},
+				},
+				Reserved: nil,
+			},
+		},
+	}
+	before := cloneLockForTest(lock)
+
+	if err := CheckLock(lock, reg); err != nil {
+		t.Fatalf("CheckLock() error = %v, want nil", err)
+	}
+	if lock.Events[eventKey(event)].Reserved != nil {
+		t.Fatalf("CheckLock() changed Reserved from nil to %#v", lock.Events[eventKey(event)].Reserved)
+	}
+	if !reflect.DeepEqual(lock, before) {
+		t.Fatalf("CheckLock() mutated lock: got %#v want %#v", lock, before)
+	}
+}
+
+func TestCheckLockRejectsUnsortedReservedEntries(t *testing.T) {
+	baseEvent := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount":      {Name: "amount"},
+			"coupon_code": {Name: "coupon_code"},
+			"discount":    {Name: "discount"},
+		},
+	}
+	baseReg := registry.Registry{Events: []registry.Event{baseEvent}}
+	lock, err := UpdateLock(Lock{}, baseReg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	removedEvent := registry.Event{
+		Name:    baseEvent.Name,
+		Version: baseEvent.Version,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	removedReg := registry.Registry{Events: []registry.Event{removedEvent}}
+	lock, err = UpdateLock(lock, removedReg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+
+	key := eventKey(removedEvent)
+	reserved := lock.Events[key].Reserved
+	if len(reserved) != 2 {
+		t.Fatalf("Reserved length = %d, want 2", len(reserved))
+	}
+	lock.Events[key] = LockedEvent{
+		Envelope:   lock.Events[key].Envelope,
+		Properties: lock.Events[key].Properties,
+		Reserved:   []ReservedField{reserved[1], reserved[0]},
+	}
+
+	err = CheckLock(lock, removedReg)
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want reserved ordering error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1.reserved") || !strings.Contains(err.Error(), "order") {
+		t.Fatalf("CheckLock() error = %q, want reserved order error", err)
+	}
+}
+
 func TestCompareReservedFieldsRejectsDuplicateReservedNumbers(t *testing.T) {
 	actual := []ReservedField{
 		{Name: "legacy_coupon_code", StableID: "legacy_coupon_code", ProtoNumber: 9, Reason: "field removed"},
