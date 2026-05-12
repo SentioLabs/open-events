@@ -240,6 +240,9 @@ func resolveProtoOutputPath(protoRoot string, filePath string) (string, error) {
 	if strings.Contains(filePath, "\\") {
 		return "", fmt.Errorf("invalid proto file path %q: must use slash-separated relative paths", filePath)
 	}
+	if isDriveQualifiedPath(filePath) {
+		return "", fmt.Errorf("invalid proto file path %q: must not be drive-qualified or drive-relative", filePath)
+	}
 	if path.IsAbs(filePath) {
 		return "", fmt.Errorf("invalid proto file path %q: must be relative", filePath)
 	}
@@ -348,6 +351,15 @@ func enumZeroValueName(enumName string) string {
 		return "ENUM_UNSPECIFIED"
 	}
 	return strings.Join(parts, "_") + "_UNSPECIFIED"
+}
+
+func isDriveQualifiedPath(filePath string) bool {
+	if len(filePath) < 2 || filePath[1] != ':' {
+		return false
+	}
+
+	first := filePath[0]
+	return (first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z')
 }
 
 func splitEnumName(enumName string) []string {

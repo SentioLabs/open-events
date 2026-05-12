@@ -84,6 +84,26 @@ func TestRenderRejectsInvalidProtoFilePaths(t *testing.T) {
 			path: "com/acme/../../outside.proto",
 			want: "must not contain '..' segments",
 		},
+		{
+			name: "windows drive-qualified absolute path",
+			path: "C:/outside.proto",
+			want: "must not be drive-qualified",
+		},
+		{
+			name: "windows drive-relative path",
+			path: "C:outside.proto",
+			want: "must not be drive-qualified",
+		},
+		{
+			name: "lowercase windows drive-qualified absolute path",
+			path: "z:/foo/bar.proto",
+			want: "must not be drive-qualified",
+		},
+		{
+			name: "uppercase windows drive-relative path",
+			path: "Z:foo.proto",
+			want: "must not be drive-qualified",
+		},
 	}
 
 	for _, tt := range tests {
