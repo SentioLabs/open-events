@@ -405,8 +405,10 @@ func validateEventLock(reg registry.Registry, lock Lock, event registry.Event, k
 		return nil
 	}
 
-	// Envelope lock entries are not validated during lowering since envelope
-	// fields are hardcoded with fixed numbers 1-7
+	// Validate envelope lock entries when present
+	if err := validateEnvelopeLock(key, lockedEvent); err != nil {
+		return err
+	}
 
 	// Validate properties lock entries
 	if err := validatePropertiesLock(event, key, lockedEvent); err != nil {
@@ -416,6 +418,47 @@ func validateEventLock(reg registry.Registry, lock Lock, event registry.Event, k
 	// Validate reserved entries
 	if err := validateReservedEntries(key, lockedEvent); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func validateEnvelopeLock(key string, lockedEvent LockedEvent) error {
+	// Envelope entries are optional, but when present they must be valid
+	if len(lockedEvent.Envelope) == 0 {
+		return nil
+	}
+
+	// Track proto numbers to detect duplicates
+	byNumber := make(map[int]string)
+
+	for name, locked := range lockedEvent.Envelope {
+		// Validate the envelope key is a known fixed envelope field
+		expectedNumber, ok := envelopeNumbers[name]
+		if !ok {
+			return fmt.Errorf("schema lock has unexpected envelope key at events.%s.envelope.%s: not a valid envelope field", key, name)
+		}
+
+		// Validate proto number
+		if err := validateProtoNumber("events."+key+".envelope."+name, locked.ProtoNumber); err != nil {
+			return err
+		}
+
+		// Validate proto number matches the fixed envelope number
+		if locked.ProtoNumber != expectedNumber {
+			return fmt.Errorf("schema lock envelope proto number mismatch for events.%s.envelope.%s: lock has %d, expected %d", key, name, locked.ProtoNumber, expectedNumber)
+		}
+
+		// Validate StableID matches field name
+		if locked.StableID != name {
+			return fmt.Errorf("schema lock StableID mismatch for events.%s.envelope.%s: lock has %q, expected %q", key, name, locked.StableID, name)
+		}
+
+		// Check for duplicate proto numbers
+		if existing, exists := byNumber[locked.ProtoNumber]; exists {
+			return fmt.Errorf("events.%s.envelope has duplicate proto number %d used by both %q and %q", key, locked.ProtoNumber, existing, name)
+		}
+		byNumber[locked.ProtoNumber] = name
 	}
 
 	return nil

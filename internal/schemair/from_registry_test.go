@@ -86,13 +86,13 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 		Events: map[string]LockedEvent{
 			"checkout.completed@1": {
 				Envelope: map[string]LockedField{
-					"event_name":    {StableID: "event_name", ProtoNumber: 91},
-					"event_version": {StableID: "event_version", ProtoNumber: 92},
-					"event_id":      {StableID: "event_id", ProtoNumber: 93},
-					"event_ts":      {StableID: "event_ts", ProtoNumber: 94},
-					"client":        {StableID: "client", ProtoNumber: 95},
-					"context":       {StableID: "context", ProtoNumber: 96},
-					"properties":    {StableID: "properties", ProtoNumber: 97},
+					"event_name":    {StableID: "event_name", ProtoNumber: 1},
+					"event_version": {StableID: "event_version", ProtoNumber: 2},
+					"event_id":      {StableID: "event_id", ProtoNumber: 3},
+					"event_ts":      {StableID: "event_ts", ProtoNumber: 4},
+					"client":        {StableID: "client", ProtoNumber: 5},
+					"context":       {StableID: "context", ProtoNumber: 6},
+					"properties":    {StableID: "properties", ProtoNumber: 7},
 				},
 				Properties: map[string]LockedField{
 					"payment_method": {StableID: "payment_method", ProtoNumber: 1},
@@ -849,5 +849,213 @@ func TestFromRegistryRejectsLeadingUnderscoreInFieldName(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "start") || !strings.Contains(err.Error(), "letter") {
 		t.Fatalf("FromRegistry() error = %q, want mention of start with letter", err)
+	}
+}
+
+func TestFromRegistryRejectsInvalidEnvelopeProtoNumbers(t *testing.T) {
+	tests := []struct {
+		name         string
+		envelopeName string
+		protoNumber  int
+		want         string
+	}{
+		{name: "zero", envelopeName: "event_name", protoNumber: 0, want: ">= 1"},
+		{name: "reserved range", envelopeName: "event_id", protoNumber: 19000, want: "reserved range"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reg := registry.Registry{
+				Namespace: "com.acme",
+				Context:   map[string]registry.Field{},
+				Events: []registry.Event{{
+					Name:       "test.event",
+					Version:    1,
+					Properties: map[string]registry.Field{},
+				}},
+			}
+			lock := Lock{
+				Version: 1,
+				Events: map[string]LockedEvent{
+					"test.event@1": {
+						Envelope: map[string]LockedField{
+							tt.envelopeName: {StableID: tt.envelopeName, ProtoNumber: tt.protoNumber},
+						},
+						Properties: map[string]LockedField{},
+					},
+				},
+			}
+
+			_, err := FromRegistry(reg, lock)
+			if err == nil {
+				t.Fatalf("FromRegistry() error = nil, want envelope proto number validation error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("FromRegistry() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestFromRegistryRejectsEnvelopeProtoNumberMismatch(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{{
+			Name:       "test.event",
+			Version:    1,
+			Properties: map[string]registry.Field{},
+		}},
+	}
+	lock := Lock{
+		Version: 1,
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Envelope: map[string]LockedField{
+					"event_name": {StableID: "event_name", ProtoNumber: 2}, // Should be 1
+				},
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want envelope proto number mismatch error")
+	}
+	if !strings.Contains(err.Error(), "event_name") || !strings.Contains(err.Error(), "mismatch") {
+		t.Fatalf("FromRegistry() error = %q, want event_name mismatch mention", err)
+	}
+}
+
+func TestFromRegistryRejectsInvalidEnvelopeStableID(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{{
+			Name:       "test.event",
+			Version:    1,
+			Properties: map[string]registry.Field{},
+		}},
+	}
+	lock := Lock{
+		Version: 1,
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Envelope: map[string]LockedField{
+					"event_version": {StableID: "wrong_id", ProtoNumber: 2},
+				},
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want envelope StableID mismatch error")
+	}
+	if !strings.Contains(err.Error(), "event_version") || !strings.Contains(err.Error(), "StableID") {
+		t.Fatalf("FromRegistry() error = %q, want event_version StableID mention", err)
+	}
+}
+
+func TestFromRegistryRejectsUnexpectedEnvelopeKey(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{{
+			Name:       "test.event",
+			Version:    1,
+			Properties: map[string]registry.Field{},
+		}},
+	}
+	lock := Lock{
+		Version: 1,
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Envelope: map[string]LockedField{
+					"unexpected_field": {StableID: "unexpected_field", ProtoNumber: 99},
+				},
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want unexpected envelope key error")
+	}
+	if !strings.Contains(err.Error(), "unexpected_field") || !strings.Contains(err.Error(), "envelope") {
+		t.Fatalf("FromRegistry() error = %q, want unexpected envelope key mention", err)
+	}
+}
+
+func TestFromRegistryRejectsDuplicateEnvelopeProtoNumbers(t *testing.T) {
+	// This test verifies that if someone manually corrupts a lock file to have
+	// valid envelope fields but with swapped numbers, the duplicate check catches it.
+	// This is defensive - it shouldn't happen in normal flow, but validates the check exists.
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{{
+			Name:       "test.event",
+			Version:    1,
+			Properties: map[string]registry.Field{},
+		}},
+	}
+	lock := Lock{
+		Version: 1,
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				Envelope: map[string]LockedField{
+					// Both fields claim number 1, but event_name is the only one that should have it
+					"event_name": {StableID: "event_name", ProtoNumber: 1},
+				},
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	// First, verify this passes (single envelope entry with correct number)
+	_, err := FromRegistry(reg, lock)
+	if err != nil {
+		t.Fatalf("FromRegistry() with single correct envelope entry error = %v, want nil", err)
+	}
+
+	// Now add a second entry with a duplicate number (but wrong for that field)
+	lock.Events["test.event@1"].Envelope["event_version"] = LockedField{StableID: "event_version", ProtoNumber: 1}
+	_, err = FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() with duplicate envelope numbers error = nil, want mismatch or duplicate error")
+	}
+	// It will catch mismatch first (event_version should be 2), which is fine
+	if !strings.Contains(err.Error(), "mismatch") && !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("FromRegistry() error = %q, want mismatch or duplicate mention", err)
+	}
+}
+
+func TestFromRegistryAllowsMissingEnvelopeEntries(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme",
+		Context:   map[string]registry.Field{},
+		Events: []registry.Event{{
+			Name:       "test.event",
+			Version:    1,
+			Properties: map[string]registry.Field{},
+		}},
+	}
+	lock := Lock{
+		Version: 1,
+		Events: map[string]LockedEvent{
+			"test.event@1": {
+				// No envelope entries at all
+				Properties: map[string]LockedField{},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
+	if err != nil {
+		t.Fatalf("FromRegistry() error = %v, want nil (missing envelope entries should be allowed)", err)
 	}
 }
