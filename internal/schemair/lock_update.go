@@ -194,17 +194,6 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 	return nil
 }
 
-func nextAvailableNumber(used map[int]struct{}) int {
-	for n := 1; ; n++ {
-		if n >= 19000 && n <= 19999 {
-			n = 20000
-		}
-		if _, exists := used[n]; !exists {
-			return n
-		}
-	}
-}
-
 func eventKey(event registry.Event) string {
 	return fmt.Sprintf("%s@%d", event.Name, event.Version)
 }
