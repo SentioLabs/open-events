@@ -39,6 +39,9 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 	if err := validateLockDuplicates(existing); err != nil {
 		return Lock{}, err
 	}
+	if err := validateLockNumberHistory(existing); err != nil {
+		return Lock{}, err
+	}
 
 	updated := Lock{
 		Version: LockVersion,

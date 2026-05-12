@@ -127,17 +127,119 @@ func TestUpdateLockDoesNotReuseReservedNumbers(t *testing.T) {
 	}
 }
 
-func TestUpdateLockSkipsProtobufReservedRange(t *testing.T) {
-	existing := Lock{Context: map[string]LockedField{"field": {StableID: "field", ProtoNumber: 18999}}}
-	reg := registry.Registry{Context: map[string]registry.Field{"field": {Name: "field"}, "next": {Name: "next"}}}
+func TestNextSequentialNumberSkipsProtobufReservedRange(t *testing.T) {
+	got := nextSequentialNumber(protobufReservedStart - 1)
+	if got != protobufReservedEnd+1 {
+		t.Fatalf("nextSequentialNumber(%d) = %d, want %d", protobufReservedStart-1, got, protobufReservedEnd+1)
+	}
+}
 
-	updated, err := UpdateLock(existing, reg)
+func TestUpdateLockRejectsMissingReservedPropertyHistoryGap(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount":      {Name: "amount"},
+			"coupon_code": {Name: "coupon_code"},
+			"discount":    {Name: "discount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock, err := UpdateLock(Lock{}, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() error = %v", err)
 	}
 
-	if updated.Context["next"].ProtoNumber != 20000 {
-		t.Fatalf("next ProtoNumber = %d, want 20000", updated.Context["next"].ProtoNumber)
+	delete(event.Properties, "coupon_code")
+	reg.Events = []registry.Event{event}
+	lock, err = UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+
+	key := eventKey(event)
+	lockedEvent := lock.Events[key]
+	lockedEvent.Reserved = nil
+	lock.Events[key] = lockedEvent
+
+	_, err = UpdateLock(lock, reg)
+	if err == nil {
+		t.Fatalf("UpdateLock() error = nil, want missing reserved history gap error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1.properties") || !strings.Contains(err.Error(), "missing proto number 2") {
+		t.Fatalf("UpdateLock() error = %q, want property history gap", err)
+	}
+}
+
+func TestUpdateLockRejectsPropertyProtoNumberHistoryGap(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount":      {Name: "amount"},
+			"coupon_code": {Name: "coupon_code"},
+			"discount":    {Name: "discount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	key := eventKey(event)
+	field := lock.Events[key].Properties["coupon_code"]
+	field.ProtoNumber = 4
+	lock.Events[key].Properties["coupon_code"] = field
+
+	_, err = UpdateLock(lock, reg)
+	if err == nil {
+		t.Fatalf("UpdateLock() error = nil, want property history gap error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1.properties") || !strings.Contains(err.Error(), "missing proto number 2") {
+		t.Fatalf("UpdateLock() error = %q, want property history gap", err)
+	}
+}
+
+func TestUpdateLockRejectsReservedProtoNumberHistoryGap(t *testing.T) {
+	lock, reg, key := lockWithReservedPropertyForTest(t)
+	lockedEvent := lock.Events[key]
+	lockedEvent.Reserved[0].ProtoNumber = 4
+	lock.Events[key] = lockedEvent
+
+	_, err := UpdateLock(lock, reg)
+	if err == nil {
+		t.Fatalf("UpdateLock() error = nil, want reserved history gap error")
+	}
+	if !strings.Contains(err.Error(), "events.checkout.completed@1.properties") || !strings.Contains(err.Error(), "missing proto number 2") {
+		t.Fatalf("UpdateLock() error = %q, want property history gap", err)
+	}
+}
+
+func TestUpdateLockRejectsContextHistoryGap(t *testing.T) {
+	reg := registry.Registry{
+		Context: map[string]registry.Field{
+			"account_id": {Name: "account_id"},
+			"region":     {Name: "region"},
+			"tenant_id":  {Name: "tenant_id"},
+		},
+	}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	delete(lock.Context, "region")
+
+	_, err = UpdateLock(lock, reg)
+	if err == nil {
+		t.Fatalf("UpdateLock() error = nil, want context history gap error")
+	}
+	if !strings.Contains(err.Error(), "context") || !strings.Contains(err.Error(), "missing proto number 2") {
+		t.Fatalf("UpdateLock() error = %q, want context history gap", err)
 	}
 }
 
