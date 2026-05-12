@@ -50,6 +50,25 @@ func TestFromRegistryRejectsGoPackageWithKeywordAlias(t *testing.T) {
 	}
 }
 
+func TestFromRegistryRejectsSingleSegmentGoPackage(t *testing.T) {
+	reg := registry.Registry{
+		Namespace: "com.acme.storefront",
+		Package: registry.PackageConfig{
+			Go: "events",
+		},
+		Events: []registry.Event{{Name: "checkout.completed", Version: 1}},
+	}
+	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+
+	_, err := FromRegistry(reg, lock)
+	if err == nil {
+		t.Fatalf("FromRegistry() error = nil, want non-nil")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "package.go") || !strings.Contains(err.Error(), "at least one '.' or '/'") {
+		t.Fatalf("FromRegistry() error = %q, want package.go import path validation", err)
+	}
+}
+
 func TestFromRegistryLowersDemoShape(t *testing.T) {
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",

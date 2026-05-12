@@ -119,6 +119,9 @@ func validateGoPackage(goPackage string) error {
 	if goPackage == "" {
 		return nil
 	}
+	if !strings.Contains(goPackage, ".") && !strings.Contains(goPackage, "/") {
+		return fmt.Errorf("package.go must include at least one '.' or '/' in the import path")
+	}
 	parts := strings.Split(goPackage, "/")
 	base := parts[len(parts)-1]
 	if token.Lookup(base).IsKeyword() {

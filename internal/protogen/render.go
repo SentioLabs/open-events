@@ -381,6 +381,9 @@ func validateGoPackage(goPackage string) error {
 	if !goPackagePattern.MatchString(goPackage) {
 		return fmt.Errorf("invalid package.go %q: must be a valid Go import path", goPackage)
 	}
+	if !strings.Contains(goPackage, ".") && !strings.Contains(goPackage, "/") {
+		return fmt.Errorf("invalid package.go %q: must include at least one '.' or '/' in the import path", goPackage)
+	}
 	if strings.Contains(goPackage, ";") {
 		return fmt.Errorf("invalid package.go %q: must not contain semicolons", goPackage)
 	}

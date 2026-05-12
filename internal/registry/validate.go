@@ -39,6 +39,8 @@ func validatePackages(pkg PackageConfig, diags *Diagnostics) {
 	if pkg.Go != "" {
 		if !goPackagePattern.MatchString(pkg.Go) {
 			*diags = append(*diags, Diagnostic{Location: "package.go", Message: "package.go must be a valid Go import path"})
+		} else if !strings.Contains(pkg.Go, ".") && !strings.Contains(pkg.Go, "/") {
+			*diags = append(*diags, Diagnostic{Location: "package.go", Message: "package.go must include at least one '.' or '/' in the import path"})
 		} else {
 			parts := strings.Split(pkg.Go, "/")
 			base := parts[len(parts)-1]

@@ -164,6 +164,7 @@ func TestRenderFileRejectsInvalidGoPackage(t *testing.T) {
 		want      string
 	}{
 		{name: "keyword alias", goPackage: "github.com/acme/type", want: "keyword"},
+		{name: "single segment", goPackage: "events", want: "at least one '.' or '/'"},
 		{name: "semicolon", goPackage: "github.com/acme/storefront/events;evil", want: "invalid package.go"},
 		{name: "newline", goPackage: "github.com/acme/storefront/events\nnext", want: "invalid package.go"},
 		{name: "control", goPackage: "github.com/acme/storefront/events\x01", want: "invalid package.go"},

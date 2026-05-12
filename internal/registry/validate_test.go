@@ -117,6 +117,15 @@ func TestValidateRejectsGoPackageKeywordBasename(t *testing.T) {
 	})
 }
 
+func TestValidateRejectsSingleSegmentGoPackage(t *testing.T) {
+	reg := validRegistry()
+	reg.Package.Go = "events"
+
+	assertDiagnostics(t, Validate(reg), Diagnostics{
+		{Location: "package.go", Message: "package.go must include at least one '.' or '/' in the import path"},
+	})
+}
+
 func TestValidateRejectsInvalidEventName(t *testing.T) {
 	reg := validRegistry()
 	reg.Events[0].Name = "UserSignedUp"
