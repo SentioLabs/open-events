@@ -31,13 +31,18 @@ func Render(reg schemair.Registry, outDir string) error {
 		return fmt.Errorf("write buf.gen.yaml: %w", err)
 	}
 
+	protoRoot := filepath.Join(outDir, "proto")
 	for _, file := range reg.Files {
+		protoPath, err := resolveProtoOutputPath(protoRoot, file.Path)
+		if err != nil {
+			return err
+		}
+
 		protoBytes, err := RenderFile(file)
 		if err != nil {
 			return err
 		}
 
-		protoPath := filepath.Join(outDir, "proto", filepath.FromSlash(file.Path))
 		if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
 			return fmt.Errorf("create proto directory for %q: %w", file.Path, err)
 		}
@@ -165,18 +170,25 @@ func RenderMetadata(reg schemair.Registry) ([]byte, error) {
 }
 
 func renderMessage(b *strings.Builder, message schemair.Message) error {
+	renderProtoComments(b, "", message.Description)
 	fmt.Fprintf(b, "message %s {\n", message.Name)
 	for _, field := range message.Fields {
-		fieldType, err := protoFieldType(field, message.Name+"."+field.Name)
+		fieldPath := message.Name + "." + field.Name
+		kind, _, err := typeRefKindAndType(field, fieldPath)
+		if err != nil {
+			return err
+		}
+		fieldType, err := protoFieldType(field, fieldPath)
 		if err != nil {
 			return err
 		}
 
+		renderProtoComments(b, "  ", field.Description)
 		label := ""
 		switch {
 		case field.Repeated:
 			label = "repeated "
-		case field.Optional:
+		case field.Optional && (kind == "scalar" || kind == "enum"):
 			label = "optional "
 		}
 		fmt.Fprintf(b, "  %s%s %s = %d;\n", label, fieldType, field.Name, field.Number)
@@ -203,6 +215,61 @@ func renderEnum(b *strings.Builder, enum schemair.Enum) {
 		fmt.Fprintf(b, "    %s = %d;\n", value.Name, value.Number)
 	}
 	b.WriteString("  }\n")
+}
+
+func renderProtoComments(b *strings.Builder, indent string, description string) {
+	if description == "" {
+		return
+	}
+
+	normalized := strings.ReplaceAll(description, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	for _, line := range strings.Split(normalized, "\n") {
+		if line == "" {
+			fmt.Fprintf(b, "%s//\n", indent)
+			continue
+		}
+		fmt.Fprintf(b, "%s// %s\n", indent, line)
+	}
+}
+
+func resolveProtoOutputPath(protoRoot string, filePath string) (string, error) {
+	if filePath == "" {
+		return "", fmt.Errorf("invalid proto file path %q: must not be empty", filePath)
+	}
+	if strings.Contains(filePath, "\\") {
+		return "", fmt.Errorf("invalid proto file path %q: must use slash-separated relative paths", filePath)
+	}
+	if path.IsAbs(filePath) {
+		return "", fmt.Errorf("invalid proto file path %q: must be relative", filePath)
+	}
+
+	for _, segment := range strings.Split(filePath, "/") {
+		if segment == ".." {
+			return "", fmt.Errorf("invalid proto file path %q: must not contain '..' segments", filePath)
+		}
+	}
+
+	cleanFilePath := path.Clean(filePath)
+	if cleanFilePath == "." {
+		return "", fmt.Errorf("invalid proto file path %q: must not be empty", filePath)
+	}
+	for _, segment := range strings.Split(cleanFilePath, "/") {
+		if segment == ".." {
+			return "", fmt.Errorf("invalid proto file path %q: must not contain '..' segments", filePath)
+		}
+	}
+
+	destination := filepath.Join(protoRoot, filepath.FromSlash(cleanFilePath))
+	rel, err := filepath.Rel(protoRoot, destination)
+	if err != nil {
+		return "", fmt.Errorf("invalid proto file path %q: resolve destination: %w", filePath, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid proto file path %q: destination escapes proto output root", filePath)
+	}
+
+	return destination, nil
 }
 
 func fileUsesTimestamp(file schemair.File) (bool, error) {

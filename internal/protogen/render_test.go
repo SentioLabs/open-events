@@ -53,6 +53,71 @@ func TestRenderWritesOutputTree(t *testing.T) {
 	}
 }
 
+func TestRenderRejectsInvalidProtoFilePaths(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "empty path",
+			path: "",
+			want: "must not be empty",
+		},
+		{
+			name: "absolute path",
+			path: "/tmp/outside.proto",
+			want: "must be relative",
+		},
+		{
+			name: "backslash separators",
+			path: "com\\acme\\outside.proto",
+			want: "must use slash-separated relative paths",
+		},
+		{
+			name: "parent segment",
+			path: "../outside.proto",
+			want: "must not contain '..' segments",
+		},
+		{
+			name: "path escapes root after clean",
+			path: "com/acme/../../outside.proto",
+			want: "must not contain '..' segments",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Render(schemair.Registry{
+				Namespace: "example.v1",
+				Files: []schemair.File{
+					{
+						Path:    tt.path,
+						Package: "example.v1",
+						Messages: []schemair.Message{
+							{
+								Name: "Example",
+								Fields: []schemair.Field{
+									{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}},
+								},
+							},
+						},
+					},
+				},
+			}, t.TempDir())
+			if err == nil {
+				t.Fatalf("Render() error = nil, want non-nil")
+			}
+			if !strings.Contains(err.Error(), "invalid proto file path") {
+				t.Fatalf("Render() error = %q, want invalid path context", err)
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Render() error = %q, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestRenderFileEmitsOptionalScalarsAndNeverOptionalRepeatedFields(t *testing.T) {
 	got, err := RenderFile(schemair.File{
 		Path:    "example/v1/events.proto",
@@ -63,6 +128,7 @@ func TestRenderFileEmitsOptionalScalarsAndNeverOptionalRepeatedFields(t *testing
 				Fields: []schemair.Field{
 					{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
 					{Name: "tags", Number: 2, Type: schemair.TypeRef{Scalar: "string"}, Optional: true, Repeated: true},
+					{Name: "client", Number: 3, Type: schemair.TypeRef{Message: "Client"}, Optional: true},
 				},
 			},
 		},
@@ -78,8 +144,48 @@ func TestRenderFileEmitsOptionalScalarsAndNeverOptionalRepeatedFields(t *testing
 	if !strings.Contains(text, "  repeated string tags = 2;\n") {
 		t.Fatalf("RenderFile() output missing repeated scalar field without optional:\n%s", text)
 	}
+	if !strings.Contains(text, "  Client client = 3;\n") {
+		t.Fatalf("RenderFile() output missing optional message field without optional label:\n%s", text)
+	}
+	if strings.Contains(text, "  optional Client client = 3;\n") {
+		t.Fatalf("RenderFile() output rendered an optional message field with optional label:\n%s", text)
+	}
 	if strings.Contains(text, "optional repeated") || strings.Contains(text, "repeated optional") {
 		t.Fatalf("RenderFile() output rendered an optional repeated field:\n%s", text)
+	}
+}
+
+func TestRenderFileEmitsDescriptionComments(t *testing.T) {
+	got, err := RenderFile(schemair.File{
+		Path:    "example/v1/events.proto",
+		Package: "example.v1",
+		Messages: []schemair.Message{
+			{
+				Name:        "Example",
+				Description: "Message line one.\nMessage line two.",
+				Fields: []schemair.Field{
+					{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true, Description: "Field line one.\nField line two."},
+					{Name: "version", Number: 2, Type: schemair.TypeRef{Scalar: "string"}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderFile() error = %v, want nil", err)
+	}
+
+	text := string(got)
+	if !strings.Contains(text, "// Message line one.\n// Message line two.\nmessage Example {\n") {
+		t.Fatalf("RenderFile() output missing message comments:\n%s", text)
+	}
+	if !strings.Contains(text, "  // Field line one.\n  // Field line two.\n  optional string name = 1;\n") {
+		t.Fatalf("RenderFile() output missing field comments:\n%s", text)
+	}
+	if !strings.Contains(text, "  optional string name = 1;\n  string version = 2;\n") {
+		t.Fatalf("RenderFile() output inserted unexpected comments for empty descriptions:\n%s", text)
+	}
+	if strings.Contains(text, "  //\n") {
+		t.Fatalf("RenderFile() output rendered empty comment lines:\n%s", text)
 	}
 }
 

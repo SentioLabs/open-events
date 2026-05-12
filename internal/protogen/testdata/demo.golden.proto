@@ -4,15 +4,18 @@ package com.acme.storefront.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Client application details.
 message Client {
+  // Client display name.
   optional string name = 1;
   optional string version = 2;
 }
 
+// Order creation event.
 message OrderCreated {
   string event_id = 1;
   google.protobuf.Timestamp occurred_at = 2;
-  optional Client client = 3;
+  Client client = 3;
   repeated LineItem items = 4;
   optional OrderStatus status = 5;
   int64 priority = 6;
