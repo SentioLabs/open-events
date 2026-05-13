@@ -23,6 +23,26 @@ type envelopeMessage interface {
 // message ready to publish. If fieldErrs is non-empty, the handler returns 400.
 type buildFunc func(c echo.Context) (msg envelopeMessage, fieldErrs []eventmap.FieldError, err error)
 
+type route struct {
+	path      string
+	eventName string
+	build     buildFunc
+}
+
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
+type fieldErrorsResponse struct {
+	Errors []eventmap.FieldError `json:"errors"`
+}
+
+type acceptedResponse struct {
+	EventID   string `json:"event_id"`
+	QueueURL  string `json:"queue_url"`
+	MessageID string `json:"message_id"`
+}
+
 // New wires Echo routes, healthcheck, and per-event handlers backed by pub.
 func New(pub publisher.Publisher, queueURL string) *echo.Echo {
 	e := echo.New()
@@ -33,68 +53,80 @@ func New(pub publisher.Publisher, queueURL string) *echo.Echo {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	e.POST("/v1/events/checkout-started", handle(pub, queueURL, eventmap.CheckoutStartedV1, func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-		var req eventmap.CheckoutStartedRequest
-		if err := c.Bind(&req); err != nil {
-			return nil, nil, err
-		}
-		if errs := req.Validate(); len(errs) > 0 {
-			return nil, errs, nil
-		}
-		return req.ToProto(), nil, nil
-	}))
-
-	e.POST("/v1/events/checkout-completed", handle(pub, queueURL, eventmap.CheckoutCompletedV1, func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-		var req eventmap.CheckoutCompletedRequest
-		if err := c.Bind(&req); err != nil {
-			return nil, nil, err
-		}
-		if errs := req.Validate(); len(errs) > 0 {
-			return nil, errs, nil
-		}
-		return req.ToProto(), nil, nil
-	}))
-
-	e.POST("/v1/events/search-performed", handle(pub, queueURL, eventmap.SearchPerformedV1, func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-		var req eventmap.SearchPerformedRequest
-		if err := c.Bind(&req); err != nil {
-			return nil, nil, err
-		}
-		if errs := req.Validate(); len(errs) > 0 {
-			return nil, errs, nil
-		}
-		return req.ToProto(), nil, nil
-	}))
+	for _, r := range routes() {
+		e.POST(r.path, handle(pub, queueURL, r.eventName, r.build))
+	}
 
 	return e
+}
+
+func routes() []route {
+	return []route{
+		{
+			path:      "/v1/events/checkout-started",
+			eventName: eventmap.CheckoutStartedV1,
+			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
+				return bindBuild[eventmap.CheckoutStartedRequest](c, func(r eventmap.CheckoutStartedRequest) envelopeMessage { return r.ToProto() })
+			},
+		},
+		{
+			path:      "/v1/events/checkout-completed",
+			eventName: eventmap.CheckoutCompletedV1,
+			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
+				return bindBuild[eventmap.CheckoutCompletedRequest](c, func(r eventmap.CheckoutCompletedRequest) envelopeMessage { return r.ToProto() })
+			},
+		},
+		{
+			path:      "/v1/events/search-performed",
+			eventName: eventmap.SearchPerformedV1,
+			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
+				return bindBuild[eventmap.SearchPerformedRequest](c, func(r eventmap.SearchPerformedRequest) envelopeMessage { return r.ToProto() })
+			},
+		},
+	}
+}
+
+type validator interface {
+	Validate() []eventmap.FieldError
+}
+
+func bindBuild[T validator](c echo.Context, toProto func(T) envelopeMessage) (envelopeMessage, []eventmap.FieldError, error) {
+	var req T
+	if err := c.Bind(&req); err != nil {
+		return nil, nil, err
+	}
+	if errs := req.Validate(); len(errs) > 0 {
+		return nil, errs, nil
+	}
+	return toProto(req), nil, nil
 }
 
 func handle(pub publisher.Publisher, queueURL, eventName string, build buildFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		msg, fieldErrs, err := build(c)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+			return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 		}
 		if len(fieldErrs) > 0 {
-			return c.JSON(http.StatusBadRequest, map[string]any{"errors": fieldErrs})
+			return c.JSON(http.StatusBadRequest, fieldErrorsResponse{Errors: fieldErrs})
 		}
 		wire, err := proto.Marshal(msg)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]any{"error": err.Error()})
+			return c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		}
 		body := base64.StdEncoding.EncodeToString(wire)
 		attrs := map[string]string{
 			publisher.AttrEventName: eventName,
 			publisher.AttrSchema:    publisher.SchemaValue,
 		}
-		msgID, err := pub.Publish(c.Request().Context(), eventName, []byte(body), attrs)
+		msgID, err := pub.Publish(c.Request().Context(), body, attrs)
 		if err != nil {
-			return c.JSON(http.StatusBadGateway, map[string]any{"error": err.Error()})
+			return c.JSON(http.StatusBadGateway, errorResponse{Error: err.Error()})
 		}
-		return c.JSON(http.StatusAccepted, map[string]any{
-			"event_id":   msg.GetEventId(),
-			"queue_url":  queueURL,
-			"message_id": msgID,
+		return c.JSON(http.StatusAccepted, acceptedResponse{
+			EventID:   msg.GetEventId(),
+			QueueURL:  queueURL,
+			MessageID: msgID,
 		})
 	}
 }

@@ -5,6 +5,7 @@ import logging
 import signal
 import sys
 import threading
+from types import FrameType
 
 import boto3
 
@@ -15,8 +16,11 @@ from .sqs import poll
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="demo-consumer")
-    parser.add_argument("--until-empty", action="store_true",
-                        help="exit cleanly after two consecutive empty receives")
+    parser.add_argument(
+        "--until-empty",
+        action="store_true",
+        help="exit cleanly after two consecutive empty receives",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -26,7 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     sink = Sink(settings.output_dir, settings.batch_size, settings.flush_interval_s)
     stop = threading.Event()
 
-    def _handle(_signum, _frame):  # type: ignore[no-untyped-def]
+    def _handle(_signum: int, _frame: FrameType | None) -> None:
         stop.set()
 
     signal.signal(signal.SIGINT, _handle)

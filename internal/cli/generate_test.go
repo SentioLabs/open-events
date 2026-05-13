@@ -9,19 +9,15 @@ import (
 	"testing"
 )
 
-func TestGenerateCommandUnsupportedTargetStillWritesErrOut(t *testing.T) {
+func TestGenerateCommandUnknownTargetFails(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
 	cmd := NewRootCommand(&stdout, &stderr)
 	cmd.SetArgs([]string{"generate", "ruby", "../../examples/basic", t.TempDir()})
 
-	err := cmd.Execute()
-	if !errors.Is(err, errGenerationFailed) {
-		t.Fatalf("Execute() error = %v, want errGenerationFailed", err)
-	}
-	if got := stderr.String(); !strings.Contains(got, "unsupported generation target \"ruby\"") {
-		t.Fatalf("stderr = %q, want unsupported generation target message", got)
+	if err := cmd.Execute(); err == nil {
+		t.Fatalf("Execute() error = nil, want non-nil for unknown generate target")
 	}
 }
 

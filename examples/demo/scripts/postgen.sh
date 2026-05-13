@@ -11,7 +11,10 @@ fi
 
 find "$GEN_DIR" -type d -exec touch {}/__init__.py \;
 
-cat > "$GEN_DIR/pyproject.toml" <<'PYTOML'
+if [[ -f "$GEN_DIR/pyproject.toml" ]]; then
+  echo "postgen: $GEN_DIR/pyproject.toml already exists (preserved)"
+else
+  cat > "$GEN_DIR/pyproject.toml" <<'PYTOML'
 [project]
 name = "openevents-demo-pb2"
 version = "0.0.0"
@@ -26,17 +29,22 @@ include = ["com*"]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 PYTOML
-
-echo "postgen: $GEN_DIR is now an installable package"
+  echo "postgen: $GEN_DIR is now an installable package"
+fi
 
 # Also write a minimal go.mod for the generated Go module
-# so the replace directive in examples/demo/services/api/go.mod resolves
+# so the replace directive in examples/demo/services/api/go.mod resolves.
+# Only write if missing — preserve hand-edits across regenerations.
 GO_DIR="$(dirname "$GEN_DIR")/go/com/acme/storefront/v1"
 if [[ -d "$GO_DIR" ]]; then
-  cat > "$GO_DIR/go.mod" <<'GOMOD'
+  if [[ -f "$GO_DIR/go.mod" ]]; then
+    echo "postgen: $GO_DIR/go.mod already exists (preserved)"
+  else
+    cat > "$GO_DIR/go.mod" <<'GOMOD'
 module github.com/acme/storefront/events
 
-go 1.24
+go 1.25
 GOMOD
-  echo "postgen: $GO_DIR/go.mod written"
+    echo "postgen: $GO_DIR/go.mod written"
+  fi
 fi

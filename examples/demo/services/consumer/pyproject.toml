@@ -10,7 +10,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+extend-select = ["E", "F", "I", "B", "UP"]
 
 [tool.uv.sources]
 openevents-demo-pb2 = { path = "../../../../_build/demo-proto/gen/python", editable = true }

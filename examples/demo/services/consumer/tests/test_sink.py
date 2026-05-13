@@ -16,7 +16,12 @@ def _row():
         "event_ts": "2026-01-01T00:00:00Z",
         "client": {"name": "demo-api", "version": "0.1.0"},
         "context": {"tenant_id": "acme", "user_id": None, "session_id": None, "platform": "PLATFORM_WEB"},
-        "properties": {"cart_id": "cart-1", "currency": "CURRENCY_USD", "item_count": 1, "subtotal_cents": 100},
+        "properties": {
+            "cart_id": "cart-1",
+            "currency": "CURRENCY_USD",
+            "item_count": 1,
+            "subtotal_cents": 100,
+        },
     }
 
 

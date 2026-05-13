@@ -2,6 +2,7 @@
 SHELL := /bin/bash
 
 REPO_ROOT       := $(abspath ../..)
+REGISTRY        := ./examples/demo/registry
 PROTO_OUT       := $(REPO_ROOT)/_build/demo-proto
 PARQUET_OUT     := $(REPO_ROOT)/_build/demo-output
 QUEUE_NAME      := storefront-events
@@ -18,12 +19,16 @@ export OPENEVENTS_OUTPUT_DIR ?= $(PARQUET_OUT)
 .PHONY: gen up wait-sqs seed api consumer demo verify down clean test
 
 gen:
-	cd $(REPO_ROOT) && go run ./cmd/openevents validate ./examples/demo
-	cd $(REPO_ROOT) && go run ./cmd/openevents lock check ./examples/demo
-	cd $(REPO_ROOT) && go run ./cmd/openevents generate proto ./examples/demo ./_build/demo-proto
+	cd $(REPO_ROOT) && go run ./cmd/openevents validate $(REGISTRY)
+	cd $(REPO_ROOT) && go run ./cmd/openevents lock check $(REGISTRY)
+	cd $(REPO_ROOT) && go run ./cmd/openevents generate proto $(REGISTRY) ./_build/demo-proto
 	cd $(REPO_ROOT) && bash scripts/install-buf.sh
 	cd $(PROTO_OUT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate .
 	bash scripts/postgen.sh $(PROTO_OUT)/gen/python
+	cd $(REPO_ROOT) && go run ./cmd/openevents generate constants $(REGISTRY) \
+		--go-out=examples/demo/services/api/eventmap/event_names.go \
+		--go-package=eventmap \
+		--python-out=examples/demo/services/consumer/src/consumer/event_names.py
 
 up:
 	docker compose up -d localstack
@@ -51,10 +56,7 @@ demo:
 	bash scripts/demo.sh
 
 verify:
-	@uv run --with polars python -c "import polars as pl, pathlib; \
-	root = pathlib.Path('$(PARQUET_OUT)'); \
-	[print('\n=== ' + d.name + ' (' + str(pl.read_parquet(list(d.glob('*.parquet'))).height) + ' rows) ===\n' + str(pl.read_parquet(list(d.glob('*.parquet'))))) \
-	  for d in sorted(root.iterdir()) if d.is_dir() and list(d.glob('*.parquet'))] or print('no parquet output under', root)"
+	@uv run --with polars python scripts/verify.py $(PARQUET_OUT)
 
 test:
 	cd services/api && go test ./...

@@ -14,12 +14,12 @@ class Settings:
     flush_interval_s: float
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             queue_url=os.environ["OPENEVENTS_QUEUE_URL"],
             endpoint_url=os.environ.get("AWS_ENDPOINT_URL"),
             region=os.environ.get("AWS_REGION", "us-east-1"),
-            output_dir=os.environ.get("OPENEVENTS_OUTPUT_DIR", "../../../../_build/demo-output"),
+            output_dir=os.environ["OPENEVENTS_OUTPUT_DIR"],
             batch_size=int(os.environ.get("OPENEVENTS_BATCH_SIZE", "10")),
             flush_interval_s=float(os.environ.get("OPENEVENTS_FLUSH_INTERVAL_S", "5")),
         )

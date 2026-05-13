@@ -76,7 +76,7 @@ func TestPostCheckoutStarted_Publishes(t *testing.T) {
 	}
 
 	// Body is base64-encoded protobuf; decode and assert fields round-trip.
-	wire, err := base64.StdEncoding.DecodeString(string(call.Body))
+	wire, err := base64.StdEncoding.DecodeString(call.Body)
 	if err != nil {
 		t.Fatalf("base64 decode: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestPostCheckoutCompleted_Publishes(t *testing.T) {
 		t.Errorf("AttrEventName: %q", pub.Calls[0].Attrs[publisher.AttrEventName])
 	}
 
-	wire, err := base64.StdEncoding.DecodeString(string(pub.Calls[0].Body))
+	wire, err := base64.StdEncoding.DecodeString(pub.Calls[0].Body)
 	if err != nil {
 		t.Fatalf("base64 decode: %v", err)
 	}
@@ -199,7 +199,7 @@ func TestPostSearchPerformed_Publishes(t *testing.T) {
 		t.Errorf("AttrEventName: %q", pub.Calls[0].Attrs[publisher.AttrEventName])
 	}
 
-	wire, err := base64.StdEncoding.DecodeString(string(pub.Calls[0].Body))
+	wire, err := base64.StdEncoding.DecodeString(pub.Calls[0].Body)
 	if err != nil {
 		t.Fatalf("base64 decode: %v", err)
 	}

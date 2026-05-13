@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import itertools
+import os
 import pathlib
 import time
 from typing import Any
@@ -10,10 +12,9 @@ import polars as pl
 from .schemas import EVENT_SCHEMAS
 
 
-def _safe_dir(name: str) -> str:
-    # "checkout.started@1" -> "checkout_started_v1"
-    n = name.replace("@", "_v").replace(".", "_")
-    return n
+def safe_dir(name: str) -> str:
+    """Map an event name like 'checkout.started@1' to a filesystem-safe 'checkout_started_v1'."""
+    return name.replace("@", "_v").replace(".", "_")
 
 
 class Sink:
@@ -23,6 +24,7 @@ class Sink:
         self.flush_interval_s = flush_interval_s
         self._buffers: dict[str, list[dict[str, Any]]] = {}
         self._last_flush = time.monotonic()
+        self._seq = itertools.count(1)
 
     def append(self, event_name: str, row: dict[str, Any]) -> None:
         self._buffers.setdefault(event_name, []).append(row)
@@ -45,6 +47,9 @@ class Sink:
         schema = EVENT_SCHEMAS[event_name]
         df = pl.DataFrame(rows, schema=schema)
         ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-        out = self.output_dir / _safe_dir(event_name)
+        out = self.output_dir / safe_dir(event_name)
         out.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(out / f"{ts}-{id(rows):x}.parquet")
+        final = out / f"{ts}-{next(self._seq):05d}.parquet"
+        tmp = final.with_suffix(final.suffix + ".tmp")
+        df.write_parquet(tmp)
+        os.replace(tmp, final)

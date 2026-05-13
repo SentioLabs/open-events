@@ -4,9 +4,21 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."   # examples/demo
 
+API_BIN=""
 API_PID=""
 cleanup() {
-  [[ -n "$API_PID" ]] && kill "$API_PID" 2>/dev/null || true
+  if [[ -n "$API_PID" ]]; then
+    # API_PID is the compiled binary itself (we built then exec'd it), so a
+    # single SIGTERM is enough. Falling back to SIGKILL covers the case where
+    # the binary ignores SIGTERM.
+    kill "$API_PID" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+      kill -0 "$API_PID" 2>/dev/null || break
+      sleep 0.1
+    done
+    kill -KILL "$API_PID" 2>/dev/null || true
+  fi
+  [[ -n "$API_BIN" ]] && rm -f "$API_BIN" || true
   docker compose down -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -15,7 +27,11 @@ make gen
 make up
 make seed
 
-(cd services/api && go run .) &
+# Build the API binary first so we control the actual PID. `go run .` would
+# spawn the compiled binary as a child and leak it on cleanup.
+API_BIN="$(mktemp -t demo-api.XXXXXX)"
+(cd services/api && go build -o "$API_BIN" .)
+"$API_BIN" &
 API_PID=$!
 
 # Wait for /healthz to come up (max 30s).

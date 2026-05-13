@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 
+import pytest
 from com.acme.storefront.v1 import events_pb2
+
 from consumer.dispatch import decode
 from consumer.event_names import CHECKOUT_STARTED_V1
 
@@ -31,6 +33,5 @@ def test_decode_known_bytes_yields_dict():
 
 
 def test_decode_unknown_event_name_raises():
-    import pytest
     with pytest.raises(ValueError):
         decode("nope.unknown@1", "")

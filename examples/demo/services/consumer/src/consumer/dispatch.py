@@ -3,9 +3,8 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from google.protobuf.json_format import MessageToDict
-
 from com.acme.storefront.v1 import events_pb2
+from google.protobuf.json_format import MessageToDict
 
 from .event_names import (
     CHECKOUT_COMPLETED_V1,
@@ -13,11 +12,10 @@ from .event_names import (
     SEARCH_PERFORMED_V1,
 )
 
-
 EVENT_REGISTRY: dict[str, type] = {
-    CHECKOUT_STARTED_V1:   events_pb2.CheckoutStartedV1,
+    CHECKOUT_STARTED_V1: events_pb2.CheckoutStartedV1,
     CHECKOUT_COMPLETED_V1: events_pb2.CheckoutCompletedV1,
-    SEARCH_PERFORMED_V1:   events_pb2.SearchPerformedV1,
+    SEARCH_PERFORMED_V1: events_pb2.SearchPerformedV1,
 }
 
 

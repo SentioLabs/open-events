@@ -21,6 +21,11 @@ def poll(
     wait_time_s: int = 20,
     max_messages: int = 10,
 ) -> None:
+    # Note: wait_time_s long-polls the SQS receive call; on a quiet queue, the
+    # main loop only iterates every wait_time_s seconds, so any sink flush
+    # cadence is effectively bounded below by it. For the demo, wait_time_s=20
+    # and the consumer flushes after every receive batch — fine. For higher
+    # throughput, drop wait_time_s or move flushes onto a separate timer.
     empty_streak = 0
     while not stop_event.is_set():
         resp = client.receive_message(
@@ -41,12 +46,14 @@ def poll(
             attrs = msg.get("MessageAttributes", {})
             name = attrs.get(ATTR_EVENT_NAME, {}).get("StringValue")
             if name is None:
-                log.warning("skipping message %s: missing %s", msg["MessageId"], ATTR_EVENT_NAME)
+                log.warning("dropping message %s: missing %s attribute", msg["MessageId"], ATTR_EVENT_NAME)
+                client.delete_message(QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"])
                 continue
             try:
                 row = decode(name, msg["Body"])
-            except Exception as exc:
-                log.error("decode failed for %s: %s", msg["MessageId"], exc)
+            except Exception:
+                log.exception("dropping message %s: decode failed for %s", msg["MessageId"], name)
+                client.delete_message(QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"])
                 continue
             sink.append(name, row)
             client.delete_message(QueueUrl=queue_url, ReceiptHandle=msg["ReceiptHandle"])

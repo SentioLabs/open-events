@@ -25,7 +25,7 @@ func TestSQSPublisher_RoundTrip(t *testing.T) {
 	}
 	client := sqs.NewFromConfig(cfg)
 	p := &SQSPublisher{Client: client, QueueURL: queueURL}
-	id, err := p.Publish(context.Background(), "test.event@1", []byte("hello"), map[string]string{
+	id, err := p.Publish(context.Background(), "hello", map[string]string{
 		AttrEventName: "test.event@1",
 		AttrSchema:    SchemaValue,
 	})

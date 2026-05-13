@@ -1,10 +1,12 @@
 package eventmap
 
 import (
+	"slices"
 	"time"
 
 	eventspb "github.com/acme/storefront/events"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -41,19 +43,15 @@ func (c Context) validate() []FieldError {
 }
 
 func (c Context) toProto() *eventspb.Context {
-	platform := platformByName[c.Platform]
-	tenant := c.TenantID
 	out := &eventspb.Context{
-		Platform: &platform,
-		TenantId: &tenant,
+		Platform: platformByName[c.Platform].Enum(),
+		TenantId: proto.String(c.TenantID),
 	}
 	if c.UserID != "" {
-		userID := c.UserID
-		out.UserId = &userID
+		out.UserId = proto.String(c.UserID)
 	}
 	if c.SessionID != "" {
-		sessionID := c.SessionID
-		out.SessionId = &sessionID
+		out.SessionId = proto.String(c.SessionID)
 	}
 	return out
 }
@@ -64,9 +62,10 @@ const (
 )
 
 func newClient() *eventspb.Client {
-	name := clientName
-	version := clientVersion
-	return &eventspb.Client{Name: &name, Version: &version}
+	return &eventspb.Client{
+		Name:    proto.String(clientName),
+		Version: proto.String(clientVersion),
+	}
 }
 
 func newEventID() string { return uuid.NewString() }
@@ -104,10 +103,6 @@ func (r CheckoutStartedRequest) Validate() []FieldError {
 
 // ToProto builds a CheckoutStartedV1 protobuf with a fresh envelope.
 func (r CheckoutStartedRequest) ToProto() *eventspb.CheckoutStartedV1 {
-	currency := currencyByName[r.Currency]
-	cartID := r.CartID
-	itemCount := r.ItemCount
-	subtotal := r.SubtotalCents
 	return &eventspb.CheckoutStartedV1{
 		EventName:    CheckoutStartedV1,
 		EventVersion: 1,
@@ -116,10 +111,10 @@ func (r CheckoutStartedRequest) ToProto() *eventspb.CheckoutStartedV1 {
 		Client:       newClient(),
 		Context:      r.Context.toProto(),
 		Properties: &eventspb.CheckoutStartedV1Properties{
-			CartId:        &cartID,
-			ItemCount:     &itemCount,
-			SubtotalCents: &subtotal,
-			Currency:      &currency,
+			CartId:        proto.String(r.CartID),
+			ItemCount:     proto.Int64(r.ItemCount),
+			SubtotalCents: proto.Int64(r.SubtotalCents),
+			Currency:      currencyByName[r.Currency].Enum(),
 		},
 	}
 }
@@ -159,19 +154,14 @@ func (r CheckoutCompletedRequest) Validate() []FieldError {
 
 // ToProto builds a CheckoutCompletedV1 protobuf with a fresh envelope.
 func (r CheckoutCompletedRequest) ToProto() *eventspb.CheckoutCompletedV1 {
-	pm := paymentMethodByName[r.PaymentMethod]
-	cartID := r.CartID
-	orderID := r.OrderID
-	total := r.TotalCents
 	props := &eventspb.CheckoutCompletedV1Properties{
-		CartId:        &cartID,
-		OrderId:       &orderID,
-		TotalCents:    &total,
-		PaymentMethod: &pm,
+		CartId:        proto.String(r.CartID),
+		OrderId:       proto.String(r.OrderID),
+		TotalCents:    proto.Int64(r.TotalCents),
+		PaymentMethod: paymentMethodByName[r.PaymentMethod].Enum(),
 	}
 	if r.CouponCode != "" {
-		coupon := r.CouponCode
-		props.CouponCode = &coupon
+		props.CouponCode = proto.String(r.CouponCode)
 	}
 	return &eventspb.CheckoutCompletedV1{
 		EventName:    CheckoutCompletedV1,
@@ -205,14 +195,12 @@ func (r SearchPerformedRequest) Validate() []FieldError {
 
 // ToProto builds a SearchPerformedV1 protobuf with a fresh envelope.
 func (r SearchPerformedRequest) ToProto() *eventspb.SearchPerformedV1 {
-	query := r.Query
-	resultCount := r.ResultCount
 	props := &eventspb.SearchPerformedV1Properties{
-		Query:       &query,
-		ResultCount: &resultCount,
+		Query:       proto.String(r.Query),
+		ResultCount: proto.Int64(r.ResultCount),
 	}
 	if len(r.Filters) > 0 {
-		props.Filters = append([]string(nil), r.Filters...)
+		props.Filters = slices.Clone(r.Filters)
 	}
 	return &eventspb.SearchPerformedV1{
 		EventName:    SearchPerformedV1,

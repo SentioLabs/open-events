@@ -2,11 +2,11 @@
 
 ## What this demo shows
 
-This is a complete end-to-end workflow from a single YAML event registry through protobuf code generation, a Go HTTP API that publishes to AWS SQS, and a Python consumer that deserializes events and writes them to Parquet. The registry (`openevents.yaml`) defines three events—`checkout.started`, `checkout.completed`, and `search.performed`—along with shared context fields. From one authoritative source, you get validated Go bindings for the API, Python bindings for analytics consumers, and a deterministic descriptor that drives schema derivation at runtime.
+This is a complete end-to-end workflow from a single YAML event registry through protobuf code generation, a Go HTTP API that publishes to AWS SQS, and a Python consumer that deserializes events and writes them to Parquet. The registry (`registry/openevents.yaml`) defines three events—`checkout.started`, `checkout.completed`, and `search.performed`—along with shared context fields. From one authoritative source, you get validated Go bindings for the API, Python bindings for analytics consumers, and a deterministic descriptor that drives schema derivation at runtime.
 
 ## Prerequisites
 
-- **Go 1.24+**
+- **Go 1.25+**
 - **Docker + docker compose** (for LocalStack SQS)
 - **uv** (Python 3.11+) for the consumer
 - **curl** (to send test events)
@@ -38,8 +38,8 @@ If you want to see what's happening at each step, follow the walkthrough below.
 The registry and lock are the source of truth for field numbering and backward compatibility.
 
 ```bash
-go run ../../cmd/openevents validate ./examples/demo
-go run ../../cmd/openevents lock check ./examples/demo
+go run ../../cmd/openevents validate ./registry
+go run ../../cmd/openevents lock check ./registry
 ```
 
 The validation step checks that event names, types, and owners are well-formed. The lock check verifies that any schema changes are compatible with the locked field numbers.
@@ -131,7 +131,7 @@ Shuts down LocalStack and removes the SQS volumes.
 
 **Descriptor-driven schemas:** The Python consumer loads the generated protobuf module and uses its descriptor (`MessageToDict`) to dynamically derive Polars schemas at load time. See `services/consumer/src/consumer/schemas.py` for the implementation. This means the schema evolves with your registry without code changes.
 
-**At-least-once delivery + deduplication:** SQS provides at-least-once delivery. The consumer uses the `event_id` field (automatically added to every event by the registry) as the deduplication key, so replayed messages are idempotent on the Parquet sink.
+**At-least-once delivery:** SQS provides at-least-once delivery. Every event carries an `event_id` (a UUID set by the API on each request) so a downstream warehouse can dedupe on it. The demo consumer **does not** dedupe — replaying a message produces a duplicate row in Parquet. A real consumer would maintain a `seen_event_ids` set (in Redis, a database, or a bloom filter) and short-circuit on hit.
 
 ## Why the Go `replace` directive?
 

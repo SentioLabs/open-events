@@ -1,6 +1,7 @@
 package eventmap
 
 import (
+	"slices"
 	"testing"
 	"time"
 
@@ -298,22 +299,9 @@ func TestSearchPerformed_ToProto_RoundTrip(t *testing.T) {
 // --- helpers ---
 
 func containsField(errs []FieldError, field string) bool {
-	for _, e := range errs {
-		if e.Field == field {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(errs, func(e FieldError) bool { return e.Field == field })
 }
 
 func equalStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	return slices.Equal(a, b)
 }

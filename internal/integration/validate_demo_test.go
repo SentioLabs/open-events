@@ -172,7 +172,7 @@ func TestBufGeneratedGoPythonInterop(t *testing.T) {
 
 	temp := t.TempDir()
 	demoCopy := filepath.Join(temp, "demo")
-	copyDir(t, "../../examples/demo", demoCopy)
+	copyDir(t, "../../examples/demo/registry", demoCopy)
 
 	runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "update", demoCopy)
 	runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "check", demoCopy)
@@ -309,7 +309,7 @@ func TestValidatePinnedPythonRuntime(t *testing.T) {
 }
 
 func TestDemoExampleHasCommittedLock(t *testing.T) {
-	lockCheck := exec.Command("go", "run", "../../cmd/openevents", "lock", "check", "../../examples/demo")
+	lockCheck := exec.Command("go", "run", "../../cmd/openevents", "lock", "check", "../../examples/demo/registry")
 	lockCheckOut, err := lockCheck.CombinedOutput()
 	if err != nil {
 		t.Fatalf("lock check demo failed: %v\n%s", err, lockCheckOut)
@@ -318,7 +318,7 @@ func TestDemoExampleHasCommittedLock(t *testing.T) {
 
 func TestValidateAndGenerateDemoRegistry(t *testing.T) {
 	t.Run("validate_demo", func(t *testing.T) {
-		validate := exec.Command("go", "run", "../../cmd/openevents", "validate", "../../examples/demo")
+		validate := exec.Command("go", "run", "../../cmd/openevents", "validate", "../../examples/demo/registry")
 		validateOut, err := validate.CombinedOutput()
 		if err != nil {
 			t.Fatalf("validate demo failed: %v\n%s", err, validateOut)
@@ -332,7 +332,7 @@ func TestValidateAndGenerateDemoRegistry(t *testing.T) {
 	t.Run("generate_demo_proto", func(t *testing.T) {
 		temp := t.TempDir()
 		demoCopy := filepath.Join(temp, "demo")
-		copyDir(t, "../../examples/demo", demoCopy)
+		copyDir(t, "../../examples/demo/registry", demoCopy)
 
 		runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "update", demoCopy)
 		runCommand(t, "", nil, "go", "run", "../../cmd/openevents", "lock", "check", demoCopy)
