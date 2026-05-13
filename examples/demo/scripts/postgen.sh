@@ -28,3 +28,15 @@ build-backend = "setuptools.build_meta"
 PYTOML
 
 echo "postgen: $GEN_DIR is now an installable package"
+
+# Also write a minimal go.mod for the generated Go module
+# so the replace directive in examples/demo/services/api/go.mod resolves
+GO_DIR="$(dirname "$GEN_DIR")/go/com/acme/storefront/v1"
+if [[ -d "$GO_DIR" ]]; then
+  cat > "$GO_DIR/go.mod" <<'GOMOD'
+module github.com/acme/storefront/events
+
+go 1.24
+GOMOD
+  echo "postgen: $GO_DIR/go.mod written"
+fi
