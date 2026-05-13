@@ -51,7 +51,10 @@ demo:
 	bash scripts/demo.sh
 
 verify:
-	@uv run --with polars python -c "import polars as pl; print(pl.read_parquet('$(PARQUET_OUT)/**/*.parquet', glob=True))"
+	@uv run --with polars python -c "import polars as pl, pathlib; \
+	root = pathlib.Path('$(PARQUET_OUT)'); \
+	[print('\n=== ' + d.name + ' (' + str(pl.read_parquet(list(d.glob('*.parquet'))).height) + ' rows) ===\n' + str(pl.read_parquet(list(d.glob('*.parquet'))))) \
+	  for d in sorted(root.iterdir()) if d.is_dir() and list(d.glob('*.parquet'))] or print('no parquet output under', root)"
 
 test:
 	cd services/api && go test ./...
