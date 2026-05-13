@@ -89,6 +89,10 @@ func discoverYAMLFiles(path string) ([]string, Diagnostics) {
 			return nil
 		}
 
+		if !strings.HasPrefix(name, "openevents") {
+			return nil
+		}
+
 		found = append(found, discovered{rel: rel, full: current})
 		return nil
 	})

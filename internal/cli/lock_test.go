@@ -160,7 +160,7 @@ context:
 	if err := os.WriteFile(filepath.Join(registryPath, "openevents.yaml"), root, 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(registryPath, "events.yaml"), fragment, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(registryPath, "openevents-events.yaml"), fragment, 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 

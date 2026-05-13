@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadSingleFile(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "valid-single.yaml")
+	registryPath := filepath.Join("testdata", "load", "openevents.yaml")
 
 	loaded, diags := Load(registryPath)
 	if diags.HasErrors() {
@@ -46,7 +46,7 @@ func TestLoadDirectorySortsAndMerges(t *testing.T) {
 }
 
 func TestLoadRejectsUnknownFields(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "unknown-field.yaml")
+	registryPath := filepath.Join("testdata", "load", "openevents-unknown-field.yaml")
 
 	_, diags := Load(registryPath)
 	if !diags.HasErrors() {
@@ -154,8 +154,8 @@ func TestLoadDirectoryLoadsNestedOpenEventsLockFile(t *testing.T) {
 
 func TestLoadConflictingSingletonDiagnosticLocation(t *testing.T) {
 	tempDir := t.TempDir()
-	aPath := filepath.Join(tempDir, "a.yaml")
-	bPath := filepath.Join(tempDir, "b.yaml")
+	aPath := filepath.Join(tempDir, "openevents-a.yaml")
+	bPath := filepath.Join(tempDir, "openevents-b.yaml")
 
 	if err := os.WriteFile(aPath, []byte("openevents: 0.1.0\nnamespace: old\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(%q): %v", aPath, err)
@@ -174,5 +174,44 @@ func TestLoadConflictingSingletonDiagnosticLocation(t *testing.T) {
 	}
 	if got, want := diags[0].Message, "conflicting value \"new\"; already set to \"old\""; got != want {
 		t.Fatalf("diags[0].Message = %q, want %q", got, want)
+	}
+}
+
+func TestLoadIgnoresNonOpenEventsYAML(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Create a valid openevents registry file
+	registryPath := filepath.Join(tempDir, "openevents.yaml")
+	registryContent := "openevents: 0.1.0\nnamespace: com.example.product\nevents:\n  test.event:\n    version: 1\n    status: active\n    owner: eng\n    producer: app\n    destination:\n      queue: analytics\n"
+	if err := os.WriteFile(registryPath, []byte(registryContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", registryPath, err)
+	}
+
+	// Create an openevents.lock.yaml file (should be skipped)
+	lockPath := filepath.Join(tempDir, "openevents.lock.yaml")
+	lockContent := "version: 1\ncontext: {}\nevents: {}\n"
+	if err := os.WriteFile(lockPath, []byte(lockContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", lockPath, err)
+	}
+
+	// Create a docker-compose.yaml file (should be skipped)
+	dockerPath := filepath.Join(tempDir, "docker-compose.yaml")
+	dockerContent := "version: '3'\nservices:\n  localstack:\n    image: localstack/localstack\n"
+	if err := os.WriteFile(dockerPath, []byte(dockerContent), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q): %v", dockerPath, err)
+	}
+
+	// Load should succeed and ignore the docker-compose.yaml
+	loaded, diags := Load(tempDir)
+	if diags.HasErrors() {
+		t.Fatalf("Load(%q) diagnostics = %v", tempDir, diags)
+	}
+
+	// Should load the event from openevents.yaml only
+	if got, want := len(loaded.Events), 1; got != want {
+		t.Fatalf("len(loaded.Events) = %d, want %d", got, want)
+	}
+	if got, want := loaded.Events[0].Name, "test.event"; got != want {
+		t.Fatalf("loaded.Events[0].Name = %q, want %q", got, want)
 	}
 }
