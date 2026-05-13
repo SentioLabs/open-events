@@ -27,6 +27,8 @@ Use arc for multi-session work, dependencies, bugs, discovered follow-ups, and a
 - Registry loading, validation, diagnostics, and model types: `internal/registry/`
 - Example registries: `examples/basic/` and `examples/demo/`
 - Design/planning docs: `docs/plans/`
+- End-to-end demo (Go API + Python consumer): `examples/demo/services/api/` and `examples/demo/services/consumer/`. These are standalone modules (own `go.mod` / `pyproject.toml`) and are NOT exercised by repo-root `go test ./...`. See `examples/demo/README.md`.
+- Generated proto + language bindings land under `_build/demo-proto/` (gitignored). Run `make -C examples/demo gen` to rebuild.
 
 ## Development Commands
 
