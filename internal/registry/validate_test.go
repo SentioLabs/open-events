@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -231,7 +232,7 @@ func TestValidateRejectsUnsupportedStatus(t *testing.T) {
 
 func TestValidateRejectsNonPositiveVersion(t *testing.T) {
 	for _, version := range []int{0, -1} {
-		t.Run("version", func(t *testing.T) {
+		t.Run(fmt.Sprintf("version=%d", version), func(t *testing.T) {
 			reg := validRegistry()
 			reg.Events[0].Version = version
 

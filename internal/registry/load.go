@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -87,9 +88,6 @@ func discoverYAMLFiles(path string) ([]string, Diagnostics) {
 		if ext != ".yaml" && ext != ".yml" {
 			return nil
 		}
-		if relErr != nil {
-			return relErr
-		}
 
 		found = append(found, discovered{rel: rel, full: current})
 		return nil
@@ -128,7 +126,7 @@ func decodeYAMLFile(path string) (registryYAML, Diagnostics) {
 	}
 
 	var trailing registryYAML
-	if err := decoder.Decode(&trailing); err != io.EOF {
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return registryYAML{}, Diagnostics{{Location: path, Message: "additional YAML documents are not supported"}}
 	}
 

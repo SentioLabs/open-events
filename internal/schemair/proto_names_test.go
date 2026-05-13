@@ -159,13 +159,9 @@ func TestEnumTypeNameRejectsUnrenderable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := EnumTypeName(tt.fieldName)
-			if result == "" {
-				// Empty result is correct - helper returns empty for unrenderable names
-				return
+			if got := EnumTypeName(tt.fieldName); got != "" {
+				t.Fatalf("EnumTypeName(%q) = %q, want empty string for unrenderable input", tt.fieldName, got)
 			}
-			// If helper returns fallback like "Enum", that's also acceptable for this test
-			// The real validation happens in FromRegistry
 		})
 	}
 }

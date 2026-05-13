@@ -9,51 +9,51 @@ import (
 	"github.com/sentiolabs/open-events/internal/registry"
 )
 
-// Protobuf reserved keywords and reserved words
-var protobufKeywords = map[string]bool{
+// Protobuf reserved keywords and reserved words.
+var protobufKeywords = map[string]struct{}{
 	// Grammar keywords
-	"syntax":     true,
-	"import":     true,
-	"package":    true,
-	"option":     true,
-	"message":    true,
-	"enum":       true,
-	"service":    true,
-	"rpc":        true,
-	"returns":    true,
-	"reserved":   true,
-	"repeated":   true,
-	"optional":   true,
-	"required":   true,
-	"oneof":      true,
-	"map":        true,
-	"extend":     true,
-	"extends":    true,
-	"extensions": true,
-	"group":      true,
-	"to":         true,
-	"max":        true,
-	"public":     true,
-	"weak":       true,
-	"stream":     true,
+	"syntax":     {},
+	"import":     {},
+	"package":    {},
+	"option":     {},
+	"message":    {},
+	"enum":       {},
+	"service":    {},
+	"rpc":        {},
+	"returns":    {},
+	"reserved":   {},
+	"repeated":   {},
+	"optional":   {},
+	"required":   {},
+	"oneof":      {},
+	"map":        {},
+	"extend":     {},
+	"extends":    {},
+	"extensions": {},
+	"group":      {},
+	"to":         {},
+	"max":        {},
+	"public":     {},
+	"weak":       {},
+	"stream":     {},
 	// Protobuf scalar types
-	"double":   true,
-	"float":    true,
-	"int32":    true,
-	"int64":    true,
-	"uint32":   true,
-	"uint64":   true,
-	"sint32":   true,
-	"sint64":   true,
-	"fixed32":  true,
-	"fixed64":  true,
-	"sfixed32": true,
-	"sfixed64": true,
-	"bool":     true,
-	"string":   true,
-	"bytes":    true,
-	"true":     true,
-	"false":    true,
+	"double":   {},
+	"float":    {},
+	"int32":    {},
+	"int64":    {},
+	"uint32":   {},
+	"uint64":   {},
+	"sint32":   {},
+	"sint64":   {},
+	"fixed32":  {},
+	"fixed64":  {},
+	"sfixed32": {},
+	"sfixed64": {},
+	"bool":     {},
+	"string":   {},
+	"bytes":    {},
+	"true":     {},
+	"false":    {},
 }
 
 func ProtoPackage(namespace string, version int) (string, error) {
@@ -83,15 +83,10 @@ func validateEventName(name string) error {
 		return fmt.Errorf("event name must not be empty")
 	}
 
-	// Check first character is a letter
-	if len(name) > 0 {
-		first := rune(name[0])
-		if !isASCIILetter(first) {
-			return fmt.Errorf("event name must start with a letter, got %q", string(first))
-		}
+	if first := rune(name[0]); !isASCIILetter(first) {
+		return fmt.Errorf("event name must start with a letter, got %q", string(first))
 	}
 
-	// Check all characters are valid
 	for _, r := range name {
 		if r > 127 {
 			return fmt.Errorf("event name contains non-ASCII character: %q", string(r))
@@ -99,37 +94,23 @@ func validateEventName(name string) error {
 		if r == ' ' || r == '\t' || r == '\n' || r == '\r' {
 			return fmt.Errorf("event name contains whitespace")
 		}
-		// Allow letters, digits, dot, underscore, hyphen
 		if !isASCIILetter(r) && !isASCIIDigit(r) && r != '.' && r != '_' && r != '-' {
 			return fmt.Errorf("event name contains unsupported character: %q", string(r))
 		}
 	}
 
-	// Validate segment structure: no empty segments created by separators
-	// Split on all separator types and check each segment is non-empty
-	runes := []rune(name)
-	if len(runes) == 0 {
-		return fmt.Errorf("event name must not be empty")
-	}
-
-	// Check for leading/trailing separators
-	last := runes[len(runes)-1]
+	last := rune(name[len(name)-1])
 	if last == '.' || last == '_' || last == '-' {
 		return fmt.Errorf("event name contains empty segment (trailing separator)")
 	}
 
-	// Track whether previous character was a separator
 	prevWasSeparator := false
-	for _, r := range runes {
+	for _, r := range name {
 		isSeparator := r == '.' || r == '_' || r == '-'
-		if isSeparator {
-			if prevWasSeparator {
-				return fmt.Errorf("event name contains empty segment (consecutive separators)")
-			}
-			prevWasSeparator = true
-		} else {
-			prevWasSeparator = false
+		if isSeparator && prevWasSeparator {
+			return fmt.Errorf("event name contains empty segment (consecutive separators)")
 		}
+		prevWasSeparator = isSeparator
 	}
 
 	return nil
@@ -360,7 +341,8 @@ func isASCIILower(r rune) bool {
 }
 
 func isProtobufKeyword(name string) bool {
-	return protobufKeywords[strings.ToLower(name)]
+	_, ok := protobufKeywords[strings.ToLower(name)]
+	return ok
 }
 
 // isValidProtoIdentifier checks if a string is a valid protobuf identifier:
@@ -371,15 +353,10 @@ func isValidProtoIdentifier(name string) error {
 		return fmt.Errorf("identifier must not be empty")
 	}
 
-	// Check first character is a letter
-	if len(name) > 0 {
-		first := rune(name[0])
-		if !isASCIILetter(first) {
-			return fmt.Errorf("identifier must start with a letter, got %q", string(first))
-		}
+	if first := rune(name[0]); !isASCIILetter(first) {
+		return fmt.Errorf("identifier must start with a letter, got %q", string(first))
 	}
 
-	// Check all characters are ASCII alphanumeric or underscore
 	for _, r := range name {
 		if r > 127 {
 			return fmt.Errorf("identifier contains non-ASCII character: %q", string(r))
@@ -389,7 +366,6 @@ func isValidProtoIdentifier(name string) error {
 		}
 	}
 
-	// Check if it's a keyword
 	if isProtobufKeyword(name) {
 		return fmt.Errorf("identifier %q is a reserved keyword", name)
 	}
@@ -397,10 +373,11 @@ func isValidProtoIdentifier(name string) error {
 	return nil
 }
 
-// isValidProtoMessageName checks if a generated message name is valid.
-// enumZeroValueName computes the synthesized zero value name for an enum type.
-// This matches the algorithm used by the protogen renderer.
-func enumZeroValueName(enumTypeName string) string {
+// EnumZeroValueName computes the synthesized zero value name for an enum
+// type. Enum type names are already validated as ASCII PascalCase, so
+// splitIdentifier produces deterministic output that the protogen renderer
+// can rely on without duplicating the algorithm.
+func EnumZeroValueName(enumTypeName string) string {
 	parts := splitIdentifier(enumTypeName)
 	if len(parts) == 0 {
 		return "ENUM_UNSPECIFIED"
@@ -416,15 +393,10 @@ func isValidProtoMessageName(name string) error {
 		return fmt.Errorf("message name must not be empty")
 	}
 
-	// Check first character is uppercase letter
-	if len(name) > 0 {
-		first := rune(name[0])
-		if !isASCIIUpper(first) {
-			return fmt.Errorf("message name must start with uppercase letter, got %q", name)
-		}
+	if first := rune(name[0]); !isASCIIUpper(first) {
+		return fmt.Errorf("message name must start with uppercase letter, got %q", name)
 	}
 
-	// Check all characters are ASCII alphanumeric
 	for _, r := range name {
 		if r > 127 {
 			return fmt.Errorf("message name contains non-ASCII character in %q", name)
@@ -434,6 +406,5 @@ func isValidProtoMessageName(name string) error {
 		}
 	}
 
-	// Message names don't need keyword check as they follow PascalCase convention
 	return nil
 }

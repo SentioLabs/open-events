@@ -50,14 +50,7 @@ Expected output:
 ok: registry valid (3 events, 4 context fields)
 ```
 
-Generate demo code from the repository root:
-
-```bash
-go run ./cmd/openevents generate go ./examples/demo <output-dir>
-go run ./cmd/openevents generate python ./examples/demo <output-dir>
-```
-
-The direct Go/Python generators are deprecated transitional paths. Use `generate proto` plus Buf as the durable backend-driven workflow.
+Generate protobuf output and run Buf against it (see the Backend-driven code generation section below for the full workflow).
 
 ## Backend-driven code generation
 
@@ -91,7 +84,7 @@ Run Buf against the generated output:
 
 The `_build/` directory is ignored by Git and skipped by `go test ./...`.
 
-The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates Go and Python code, emits JSON with generated Go types, and decodes it with generated Python types.
+The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates protobuf output, builds it with Buf, and verifies end-to-end Go/Python interop using `protoc-gen-go` and `protoc-gen-python` against the pinned protobuf runtime.
 
 ## Development
 

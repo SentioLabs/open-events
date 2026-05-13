@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/sentiolabs/open-events/internal/schemair"
 	"gopkg.in/yaml.v3"
@@ -225,7 +224,7 @@ func renderMessage(b *strings.Builder, message schemair.Message) error {
 
 func renderEnum(b *strings.Builder, enum schemair.Enum) {
 	fmt.Fprintf(b, "  enum %s {\n", enum.Name)
-	fmt.Fprintf(b, "    %s = 0;\n", enumZeroValueName(enum.Name))
+	fmt.Fprintf(b, "    %s = 0;\n", schemair.EnumZeroValueName(enum.Name))
 	for _, value := range enum.Values {
 		fmt.Fprintf(b, "    %s = %d;\n", value.Name, value.Number)
 	}
@@ -360,14 +359,6 @@ func typeRefKindAndType(field schemair.Field, fieldPath string) (string, string,
 	return kind, fieldType, nil
 }
 
-func enumZeroValueName(enumName string) string {
-	parts := splitEnumName(enumName)
-	if len(parts) == 0 {
-		return "ENUM_UNSPECIFIED"
-	}
-	return strings.Join(parts, "_") + "_UNSPECIFIED"
-}
-
 func isDriveQualifiedPath(filePath string) bool {
 	if len(filePath) < 2 || filePath[1] != ':' {
 		return false
@@ -420,37 +411,6 @@ func goPackageAlias(goPackage string) (string, error) {
 		return "", fmt.Errorf("invalid package.go %q: alias %q is a Go keyword", goPackage, alias)
 	}
 	return alias, nil
-}
-
-func splitEnumName(enumName string) []string {
-	var parts []string
-	var part []rune
-	runes := []rune(enumName)
-	flush := func() {
-		if len(part) == 0 {
-			return
-		}
-		parts = append(parts, string(part))
-		part = nil
-	}
-
-	for i, r := range runes {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			flush()
-			continue
-		}
-		if len(part) > 0 {
-			prev := runes[i-1]
-			nextLower := i+1 < len(runes) && unicode.IsLower(runes[i+1])
-			if unicode.IsUpper(r) && (unicode.IsLower(prev) || unicode.IsUpper(prev) && nextLower) {
-				flush()
-			}
-		}
-		part = append(part, unicode.ToUpper(r))
-	}
-	flush()
-
-	return parts
 }
 
 type metadataRoot struct {

@@ -49,36 +49,6 @@ func TestGenerateProtoUnsupportedWithoutLockWritesErrOut(t *testing.T) {
 	}
 }
 
-func TestGenerateCommandGoAndPythonEmitDeprecationWarning(t *testing.T) {
-	tests := []struct {
-		name   string
-		target string
-	}{
-		{name: "go", target: "go"},
-		{name: "python", target: "python"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var stdout bytes.Buffer
-			var stderr bytes.Buffer
-
-			cmd := NewRootCommand(&stdout, &stderr)
-			cmd.SetArgs([]string{"generate", tt.target, "../../examples/basic", t.TempDir()})
-
-			if err := cmd.Execute(); err != nil {
-				t.Fatalf("Execute() error = %v", err)
-			}
-			if got := stdout.String(); !strings.Contains(got, "ok: generated "+tt.target+" code in") {
-				t.Fatalf("stdout = %q, want success message", got)
-			}
-			if got := stderr.String(); !strings.Contains(got, "deprecated") || !strings.Contains(got, "generate proto") {
-				t.Fatalf("stderr = %q, want deprecation guidance", got)
-			}
-		})
-	}
-}
-
 func TestGenerateProtoDoesNotRunBuf(t *testing.T) {
 	registryPath := t.TempDir()
 	content, err := os.ReadFile("../../examples/basic/openevents.yaml")

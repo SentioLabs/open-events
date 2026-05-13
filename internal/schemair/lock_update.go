@@ -108,9 +108,7 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 			updatedEvent.Properties[name] = LockedField{StableID: name, ProtoNumber: number}
 		}
 
-		for _, reserved := range existingEvent.Reserved {
-			updatedEvent.Reserved = append(updatedEvent.Reserved, reserved)
-		}
+		updatedEvent.Reserved = append(updatedEvent.Reserved, existingEvent.Reserved...)
 
 		for _, name := range sortedLockedFieldNames(existingEvent.Properties) {
 			if _, ok := event.Properties[name]; ok {

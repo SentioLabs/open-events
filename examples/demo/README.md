@@ -74,7 +74,3 @@ bash scripts/install-buf.sh
 ```
 
 Keep generated output under ignored, Go-skipped build directories (for example `_build/`) instead of committing generated language artifacts.
-
-## Deprecated direct generators
-
-Direct `go`/`python` generators are deprecated transitional paths. Prefer `generate proto` + Buf as the durable backend-driven workflow.

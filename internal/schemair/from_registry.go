@@ -10,47 +10,32 @@ import (
 )
 
 func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
-	// Validate lock structure before proceeding
 	if err := validateLockForLowering(reg, lock); err != nil {
 		return Registry{}, err
 	}
 
-	// Validate that we have exactly one version
 	if len(reg.Events) == 0 {
 		return Registry{}, fmt.Errorf("registry has no events; cannot infer version")
 	}
 
-	filesByVersion := make(map[int][]registry.Event)
-	versions := make([]int, 0, len(reg.Events))
-	seenVersions := make(map[int]struct{}, len(reg.Events))
+	version := reg.Events[0].Version
 	for _, event := range reg.Events {
-		filesByVersion[event.Version] = append(filesByVersion[event.Version], event)
-		if _, ok := seenVersions[event.Version]; ok {
-			continue
+		if event.Version != version {
+			return Registry{}, fmt.Errorf("registry contains multiple versions (saw %d and %d); FromRegistry requires exactly one version per file", version, event.Version)
 		}
-		seenVersions[event.Version] = struct{}{}
-		versions = append(versions, event.Version)
-	}
-	sort.Ints(versions)
-
-	if len(versions) > 1 {
-		return Registry{}, fmt.Errorf("registry contains multiple versions (%v); FromRegistry requires exactly one version per file", versions)
 	}
 
 	if err := validateGoPackage(reg.Package.Go); err != nil {
 		return Registry{}, err
 	}
 
-	files := make([]File, 0, len(versions))
-	for _, version := range versions {
-		events := filesByVersion[version]
-		sort.Slice(events, func(i, j int) bool {
-			if events[i].Name == events[j].Name {
-				return events[i].Version < events[j].Version
-			}
-			return events[i].Name < events[j].Name
-		})
+	events := append([]registry.Event(nil), reg.Events...)
+	sort.Slice(events, func(i, j int) bool {
+		return events[i].Name < events[j].Name
+	})
 
+	files := make([]File, 0, 1)
+	{
 		pkg, err := ProtoPackage(reg.Namespace, version)
 		if err != nil {
 			return Registry{}, err
@@ -65,10 +50,7 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 			return Registry{}, err
 		}
 
-		// Track generated message names to detect collisions
-		messageNames := make(map[string]string) // map[generatedName]eventKey
-		messageNames["Client"] = "Client"
-		messageNames["Context"] = "Context"
+		messageNames := map[string]string{"Client": "Client", "Context": "Context"}
 
 		messages := []Message{clientMessage(), context}
 		for _, event := range events {
@@ -199,7 +181,7 @@ func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message,
 
 			// Check for enum value name collisions across all enums in this message
 			// Reserve the synthesized zero value name
-			zeroValueName := enumZeroValueName(enum.Name)
+			zeroValueName := EnumZeroValueName(enum.Name)
 			if existing, exists := enumValueNames[zeroValueName]; exists {
 				return Message{}, fmt.Errorf("context enum value collision: field %q zero value %q conflicts with %s", name, zeroValueName, existing)
 			}
@@ -274,7 +256,7 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 
 			// Check for enum value name collisions across all enums in this message
 			// Reserve the synthesized zero value name
-			zeroValueName := enumZeroValueName(enum.Name)
+			zeroValueName := EnumZeroValueName(enum.Name)
 			if existing, exists := enumValueNames[zeroValueName]; exists {
 				return Message{}, fmt.Errorf("events.%s.properties enum value collision: field %q zero value %q conflicts with %s", key, name, zeroValueName, existing)
 			}

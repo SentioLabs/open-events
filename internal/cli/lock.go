@@ -73,7 +73,7 @@ func newLockCheckCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 				fmt.Fprintln(errOut, err)
 				return errLockFailed
 			}
-			lock, err := readLockFile(lockPath)
+			lock, err := decodeLockFile(currentBytes)
 			if err != nil {
 				fmt.Fprintln(errOut, err)
 				return errLockFailed
@@ -103,7 +103,7 @@ func newLockCheckCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 }
 
 func loadValidatedRegistry(path string) (registry.Registry, string, error) {
-	reg, loadDiags := registry.Load(registryDefinitionPath(path))
+	reg, loadDiags := registry.Load(path)
 	if loadDiags.HasErrors() {
 		return registry.Registry{}, "", errors.New(loadDiags.Error())
 	}
@@ -118,23 +118,12 @@ func lockFilePath(registryPath string) string {
 	return filepath.Join(registryRootPath(registryPath), "openevents.lock.yaml")
 }
 
-func registryDefinitionPath(registryPath string) string {
-	return registryPath
-}
-
 func registryRootPath(registryPath string) string {
-	if isDirectoryPath(registryPath) {
+	info, err := os.Stat(registryPath)
+	if err == nil && info.IsDir() {
 		return registryPath
 	}
 	return filepath.Dir(registryPath)
-}
-
-func isDirectoryPath(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }
 
 func readLockFile(path string) (schemair.Lock, error) {
@@ -142,8 +131,14 @@ func readLockFile(path string) (schemair.Lock, error) {
 	if err != nil {
 		return schemair.Lock{}, err
 	}
+	return decodeLockFile(content)
+}
+
+func decodeLockFile(content []byte) (schemair.Lock, error) {
 	var file lockFile
-	if err := yaml.Unmarshal(content, &file); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(content))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&file); err != nil {
 		return schemair.Lock{}, err
 	}
 	return file.toSchemaLock(), nil
