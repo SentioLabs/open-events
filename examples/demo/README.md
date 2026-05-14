@@ -1,175 +1,120 @@
-# OpenEvents Demo: End-to-End Walkthrough
+# OpenEvents demo
 
-## What this demo shows
+A small storefront pipeline that exercises every moving part of OpenEvents:
+registry → protobuf codegen → Go API publishing to SQS → Python consumer
+landing events in Parquet.
 
-This is a complete end-to-end workflow from a single YAML event registry through protobuf code generation, a Go HTTP API that publishes to AWS SQS, and a Python consumer that deserializes events and writes them to Parquet. The registry (`registry/openevents.yaml`) defines three events—`checkout.started`, `checkout.completed`, and `search.performed`—along with shared context fields. From one authoritative source, you get validated Go bindings for the API, Python bindings for analytics consumers, and a deterministic descriptor that drives schema derivation at runtime.
+> **Want to understand how it works?** Read
+> [`GUIDE.md`](./GUIDE.md) — an annotated walkthrough of every component.
+> This README is the runbook.
 
 ## Prerequisites
 
 - **Go 1.25+**
-- **Docker + docker compose** (for LocalStack SQS)
-- **uv** (Python 3.11+) for the consumer
+- **Docker + Docker Compose** (for LocalStack SQS)
+- **uv** (Python 3.11+) — installs the consumer
 - **curl** (to send test events)
 
-## One-shot demo
+No global install of `openevents` is needed; the Makefile runs the CLI in place.
 
-Run the full end-to-end workflow in one command:
+## One-shot demo
 
 ```bash
 make demo
 ```
 
-This will:
-1. Validate the registry and lock metadata
-2. Generate protobuf from the registry
-3. Spin up a local SQS (via LocalStack)
-4. Start the Go API service
-5. Send three sample events (checkout.started, checkout.completed, search.performed)
-6. Run the Python consumer to drain the queue
-7. Verify the Parquet output
-8. Tear down all services
+That target:
 
-If you want to see what's happening at each step, follow the walkthrough below.
+1. Validates the registry and lock
+2. Generates protobuf + cross-language constants
+3. Brings up LocalStack and creates the SQS queue
+4. Builds and starts the Go API
+5. POSTs the three sample events under [`samples/`](./samples/)
+6. Drains the queue with the Python consumer (`--until-empty`)
+7. Prints a summary of the Parquet output
+8. Tears LocalStack and the API down
 
-## Step-by-step walkthrough
+The whole thing takes about a minute from a cold start. Repeat runs are
+faster — most of the time is LocalStack image download on the first run.
 
-### 1. Validate the registry and check the lock
+## Targets
 
-The registry and lock are the source of truth for field numbering and backward compatibility.
+| Target | What it does |
+|--------|--------------|
+| `make gen` | Validate + lock-check + generate proto + buf generate + generate cross-language constants. Idempotent; re-run after any registry change. |
+| `make up` | `docker compose up -d localstack` and wait for SQS to be ready. |
+| `make seed` | Create the `storefront-events` SQS queue inside LocalStack. |
+| `make api` | Run the Go API in the foreground on `:8080`. Use in a second terminal during a step-by-step walkthrough. |
+| `make consumer` | Run the Python consumer in the foreground (drains, exits when the queue is empty for two polls). |
+| `make demo` | The one-shot pipeline described above. |
+| `make verify` | Read each per-event-type directory under `_build/demo-output/` and print its rows. |
+| `make test` | Run Go tests in `services/api/` and pytest in `services/consumer/`. |
+| `make down` | `docker compose down -v` — stops LocalStack and removes its volumes. |
+| `make clean` | Remove the Parquet output and LocalStack scratch dirs. |
 
-```bash
-go run ../../cmd/openevents validate ./registry
-go run ../../cmd/openevents lock check ./registry
-```
+## Sending events by hand
 
-The validation step checks that event names, types, and owners are well-formed. The lock check verifies that any schema changes are compatible with the locked field numbers.
-
-### 2. Generate protobuf (gen)
-
-Generate protobuf and run codegen post-processing:
-
-```bash
-make gen
-```
-
-This will:
-- Render `openevents.proto` and Buf configuration
-- Run Buf to compile protobuf to Go and Python
-- Execute `scripts/postgen.sh` to create Python `__init__.py` files and both `pyproject.toml` (Python) and `go.mod` (Go) for the generated modules
-
-Output goes to `_build/demo-proto/` and `_build/demo-proto/gen/{go,python}/`.
-
-### 3. Start LocalStack and create the SQS queue
-
-```bash
-make up
-make seed
-```
-
-This brings up LocalStack with SQS enabled and creates the `storefront-events` queue.
-
-### 4. Start the Go API service (separate terminal)
-
-```bash
-make api
-```
-
-The API listens on `http://localhost:8080` and exposes POST routes for each event:
-- `/v1/events/checkout-started`
-- `/v1/events/checkout-completed`
-- `/v1/events/search-performed`
-
-### 5. Send events via curl
-
-In another terminal, post events from the sample JSON files:
+With `make up && make seed && make api` running:
 
 ```bash
 curl -X POST http://localhost:8080/v1/events/checkout-started \
   -H 'content-type: application/json' \
-  --data-binary @examples/demo/samples/checkout-started.json
-
-curl -X POST http://localhost:8080/v1/events/checkout-completed \
-  -H 'content-type: application/json' \
-  --data-binary @examples/demo/samples/checkout-completed.json
-
-curl -X POST http://localhost:8080/v1/events/search-performed \
-  -H 'content-type: application/json' \
-  --data-binary @examples/demo/samples/search-performed.json
+  --data-binary @samples/checkout-started.json
 ```
 
-Each POST to the API parses the JSON, validates it against the schema, and publishes the event to SQS.
+Routes:
 
-### 6. Run the Python consumer
+- `POST /v1/events/checkout-started`
+- `POST /v1/events/checkout-completed`
+- `POST /v1/events/search-performed`
+- `GET /healthz`
 
-In another terminal, consume events from the queue and write them to Parquet:
-
-```bash
-make consumer
-```
-
-This runs the consumer with default mode (drains queue, exits when empty). You'll see log output as it deserializes messages and writes batches to Parquet.
-
-### 7. Verify the Parquet output
-
-```bash
-make verify
-```
-
-This reads all Parquet files from `_build/demo-output/` and prints a summary. You should see three rows, one per event sent.
-
-### 8. Clean up
-
-```bash
-make down
-```
-
-Shuts down LocalStack and removes the SQS volumes.
-
-## What's happening under the hood
-
-**Wire format:** Events are serialized as base64-encoded protobuf messages in the SQS message body, with the event name (e.g., `checkout.started@1`) in the SQS message attribute `event_name`. A `schema` attribute identifies the registry namespace and version.
-
-**Descriptor-driven schemas:** The Python consumer loads the generated protobuf module and uses its descriptor (`MessageToDict`) to dynamically derive Polars schemas at load time. See `services/consumer/src/consumer/schemas.py` for the implementation. This means the schema evolves with your registry without code changes.
-
-**At-least-once delivery:** SQS provides at-least-once delivery. Every event carries an `event_id` (a UUID set by the API on each request) so a downstream warehouse can dedupe on it. The demo consumer **does not** dedupe — replaying a message produces a duplicate row in Parquet. A real consumer would maintain a `seen_event_ids` set (in Redis, a database, or a bloom filter) and short-circuit on hit.
-
-## Why the Go `replace` directive?
-
-The registry's `package.go` declares the canonical import path (`github.com/acme/storefront/events`). The demo's `services/api/go.mod` uses a `replace` directive to point at the locally generated tree under `_build/demo-proto/gen/go/com/acme/storefront/v1`. In a real project, you'd publish that module to a Go registry or module server instead of using `replace`. Local `replace` is only for development.
-
-## Why the codegen post-step?
-
-`protoc_builtin: python` in Buf does not emit `__init__.py` files or a `pyproject.toml`. The `scripts/postgen.sh` script wraps the generated Python code so it becomes an installable package. It also writes a minimal `go.mod` for the generated Go module so the `replace` directive can find it. In a real project, you'd publish these as separate PyPI and Go module releases instead of generating them locally on every build.
+Each successful POST returns `202 Accepted` with `event_id`, `queue_url`, and
+`message_id`.
 
 ## Graduating to real AWS
 
-To use real AWS SQS instead of LocalStack:
-
-1. Unset `AWS_ENDPOINT_URL`:
-   ```bash
-   unset AWS_ENDPOINT_URL
-   ```
-
-2. Set real AWS credentials:
-   ```bash
-   export AWS_ACCESS_KEY_ID="your-key"
-   export AWS_SECRET_ACCESS_KEY="your-secret"
-   export AWS_REGION="us-east-1"
-   ```
-
-3. Point `OPENEVENTS_QUEUE_URL` to your real queue:
-   ```bash
-   export OPENEVENTS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/123456789012/your-queue"
-   ```
-
-That's all. The API and consumer use the AWS SDK, which respects these environment variables.
-
-## CI recommendation
-
-In CI, run the validation and codegen steps to ensure the registry is in sync:
+The Go API and Python consumer use the standard AWS SDK environment variables,
+so swapping LocalStack for real SQS is a matter of unsetting one variable and
+setting three more:
 
 ```bash
-make gen && make test
+unset AWS_ENDPOINT_URL
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_REGION="us-east-1"
+export OPENEVENTS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/<account>/<queue>"
 ```
 
-This validates the registry, locks, and generates protobuf, then runs unit tests on both services. Omit `make demo` in CI since it requires Docker; gate it behind a flag or run it only in integration test workflows.
+Then `make api` and `make consumer` are unchanged.
+
+## Layout
+
+```
+examples/demo/
+├── GUIDE.md                # annotated walkthrough (start here for "how")
+├── README.md               # this file (runbook)
+├── Makefile                # targets above
+├── docker-compose.yaml     # LocalStack
+├── registry/               # the single source of truth
+│   ├── openevents.yaml         # event + context definitions
+│   └── openevents.lock.yaml    # pinned protobuf field numbers
+├── samples/                # JSON payloads used by `make demo`
+├── scripts/
+│   ├── demo.sh             # one-shot orchestration
+│   ├── postgen.sh          # post-codegen package wrappers
+│   └── verify.py           # `make verify` reader
+└── services/
+    ├── api/                # Go: Echo + SQS publisher
+    └── consumer/           # Python: boto3 + polars sink
+```
+
+## Troubleshooting
+
+- **Port 8080 already in use.** `lsof -nP -iTCP:8080 -sTCP:LISTEN` and kill the
+  offender; `make demo` builds the API into a temp file and cleans up on exit,
+  but a leftover instance from a manual `make api` will block it.
+- **LocalStack image download is slow.** First-run only; subsequent runs reuse
+  the cached image.
+- **`make verify` says "no parquet output"** before the consumer has run.
+  Run `make consumer` first (or `make demo` which does both).
