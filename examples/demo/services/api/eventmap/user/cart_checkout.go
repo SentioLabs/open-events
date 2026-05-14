@@ -14,9 +14,9 @@ import (
 type CartCheckoutRequest struct {
 	Context       UserContext `json:"context"`
 	CartID        string      `json:"cart_id"`
-	ItemCount     int64       `json:"item_count"`
-	SubtotalCents int64       `json:"subtotal_cents"`
-	Currency      string      `json:"currency"` // "USD"|"EUR"|"GBP"
+	ItemCount     *int64      `json:"item_count"`     // required; pointer distinguishes 0 from omitted
+	SubtotalCents *int64      `json:"subtotal_cents"` // required; pointer distinguishes 0 from omitted
+	Currency      string      `json:"currency"`       // "USD"|"EUR"|"GBP"
 }
 
 var checkoutCurrencyByName = map[string]userpb.UserCartCheckoutV1Properties_Currency{
@@ -30,6 +30,12 @@ func (r CartCheckoutRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
 	if r.CartID == "" {
 		errs = append(errs, eventmap.FieldError{Field: "cart_id", Message: "required"})
+	}
+	if r.ItemCount == nil {
+		errs = append(errs, eventmap.FieldError{Field: "item_count", Message: "required"})
+	}
+	if r.SubtotalCents == nil {
+		errs = append(errs, eventmap.FieldError{Field: "subtotal_cents", Message: "required"})
 	}
 	if _, ok := checkoutCurrencyByName[r.Currency]; !ok {
 		errs = append(errs, eventmap.FieldError{Field: "currency", Message: "must be one of USD|EUR|GBP"})
@@ -48,8 +54,8 @@ func (r CartCheckoutRequest) ToProto() eventmap.EnvelopeMessage {
 		Context:      contextToProto(r.Context),
 		Properties: &userpb.UserCartCheckoutV1Properties{
 			CartId:        proto.String(r.CartID),
-			ItemCount:     proto.Int64(r.ItemCount),
-			SubtotalCents: proto.Int64(r.SubtotalCents),
+			ItemCount:     proto.Int64(*r.ItemCount),
+			SubtotalCents: proto.Int64(*r.SubtotalCents),
 			Currency:      checkoutCurrencyByName[r.Currency].Enum(),
 		},
 	}

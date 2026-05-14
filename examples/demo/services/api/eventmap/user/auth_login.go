@@ -14,7 +14,7 @@ import (
 type AuthLoginRequest struct {
 	Context UserContext `json:"context"`
 	Method  string      `json:"method"`  // "email"|"google"|"apple"
-	Success bool        `json:"success"` // required
+	Success *bool       `json:"success"` // required; pointer distinguishes false from omitted
 }
 
 var loginMethodByName = map[string]userpb.UserAuthLoginV1Properties_Method{
@@ -28,6 +28,9 @@ func (r AuthLoginRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
 	if _, ok := loginMethodByName[r.Method]; !ok {
 		errs = append(errs, eventmap.FieldError{Field: "method", Message: "must be one of email|google|apple"})
+	}
+	if r.Success == nil {
+		errs = append(errs, eventmap.FieldError{Field: "success", Message: "required"})
 	}
 	return errs
 }
@@ -43,7 +46,7 @@ func (r AuthLoginRequest) ToProto() eventmap.EnvelopeMessage {
 		Context:      contextToProto(r.Context),
 		Properties: &userpb.UserAuthLoginV1Properties{
 			Method:  loginMethodByName[r.Method].Enum(),
-			Success: proto.Bool(r.Success),
+			Success: proto.Bool(*r.Success),
 		},
 	}
 }

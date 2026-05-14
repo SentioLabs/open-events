@@ -15,14 +15,24 @@ import (
 // InfoCalibrationRequest is the JSON body for POST /v1/events/device/info/calibration.
 type InfoCalibrationRequest struct {
 	Context       DeviceContext `json:"context"`
-	Concentration float64       `json:"concentration"`
-	Integral      int64         `json:"integral"`
-	Timestamp     int64         `json:"timestamp"` // unix epoch seconds
+	Concentration *float64      `json:"concentration"` // required; pointer distinguishes 0.0 from omitted
+	Integral      *int64        `json:"integral"`      // required; pointer distinguishes 0 from omitted
+	Timestamp     *int64        `json:"timestamp"`     // required unix epoch seconds; pointer distinguishes 0 from omitted
 }
 
 // Validate returns field-level errors for the request, empty on success.
 func (r InfoCalibrationRequest) Validate() []eventmap.FieldError {
-	return validateContext(r.Context)
+	errs := validateContext(r.Context)
+	if r.Concentration == nil {
+		errs = append(errs, eventmap.FieldError{Field: "concentration", Message: "required"})
+	}
+	if r.Integral == nil {
+		errs = append(errs, eventmap.FieldError{Field: "integral", Message: "required"})
+	}
+	if r.Timestamp == nil {
+		errs = append(errs, eventmap.FieldError{Field: "timestamp", Message: "required"})
+	}
+	return errs
 }
 
 // ToProto builds a DeviceInfoCalibrationV1 protobuf with a fresh envelope.
@@ -35,9 +45,9 @@ func (r InfoCalibrationRequest) ToProto() eventmap.EnvelopeMessage {
 		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &devicepb.DeviceInfoCalibrationV1Properties{
-			Concentration: proto.Float64(r.Concentration),
-			Integral:      proto.Int64(r.Integral),
-			Timestamp:     timestamppb.New(time.Unix(r.Timestamp, 0)),
+			Concentration: proto.Float64(*r.Concentration),
+			Integral:      proto.Int64(*r.Integral),
+			Timestamp:     timestamppb.New(time.Unix(*r.Timestamp, 0)),
 		},
 	}
 }

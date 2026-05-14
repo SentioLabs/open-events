@@ -13,9 +13,9 @@ import (
 // IncidentDropRequest is the JSON body for POST /v1/events/device/incident/drop.
 type IncidentDropRequest struct {
 	Context           DeviceContext `json:"context"`
-	PeakAccelerationG float64       `json:"peak_acceleration_g"`
-	Axis              string        `json:"axis"` // "x"|"y"|"z"
-	DurationMs        int64         `json:"duration_ms"`
+	PeakAccelerationG *float64      `json:"peak_acceleration_g"` // required; pointer distinguishes 0.0 from omitted
+	Axis              string        `json:"axis"`                // "x"|"y"|"z"
+	DurationMs        *int64        `json:"duration_ms"`         // required; pointer distinguishes 0 from omitted
 }
 
 var axisTypeByName = map[string]devicepb.DeviceIncidentDropV1Properties_Axis{
@@ -27,6 +27,12 @@ var axisTypeByName = map[string]devicepb.DeviceIncidentDropV1Properties_Axis{
 // Validate returns field-level errors for the request, empty on success.
 func (r IncidentDropRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
+	if r.PeakAccelerationG == nil {
+		errs = append(errs, eventmap.FieldError{Field: "peak_acceleration_g", Message: "required"})
+	}
+	if r.DurationMs == nil {
+		errs = append(errs, eventmap.FieldError{Field: "duration_ms", Message: "required"})
+	}
 	if _, ok := axisTypeByName[r.Axis]; !ok {
 		errs = append(errs, eventmap.FieldError{Field: "axis", Message: "must be one of x|y|z"})
 	}
@@ -43,9 +49,9 @@ func (r IncidentDropRequest) ToProto() eventmap.EnvelopeMessage {
 		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &devicepb.DeviceIncidentDropV1Properties{
-			PeakAccelerationG: proto.Float64(r.PeakAccelerationG),
+			PeakAccelerationG: proto.Float64(*r.PeakAccelerationG),
 			Axis:              axisTypeByName[r.Axis].Enum(),
-			DurationMs:        proto.Int64(r.DurationMs),
+			DurationMs:        proto.Int64(*r.DurationMs),
 		},
 	}
 }

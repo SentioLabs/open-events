@@ -13,6 +13,9 @@ import (
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/user"
 )
 
+func int64p(v int64) *int64 { return &v }
+func boolp(v bool) *bool    { return &v }
+
 func validUserContext() user.UserContext {
 	return user.UserContext{
 		TenantId:  "tenant-1",
@@ -122,13 +125,64 @@ func TestAuthSignup_ToProto_RoundTrip(t *testing.T) {
 	}
 }
 
+// --- AuthLogin required primitive fields ---
+
+func TestAuthLogin_Validate_RejectsMissingSuccess(t *testing.T) {
+	req := user.AuthLoginRequest{
+		Context: validUserContext(),
+		Method:  "email",
+		// Success omitted (nil)
+	}
+	errs := req.Validate()
+	if !containsField(errs, "success") {
+		t.Fatalf("expected success error for missing bool, got %+v", errs)
+	}
+}
+
+func TestAuthLogin_Validate_AcceptsSuccessFalse(t *testing.T) {
+	f := false
+	req := user.AuthLoginRequest{
+		Context: validUserContext(),
+		Method:  "email",
+		Success: &f,
+	}
+	if errs := req.Validate(); len(errs) != 0 {
+		t.Fatalf("expected no errors for explicit false, got %+v", errs)
+	}
+}
+
+func TestAuthLogin_Validate_AcceptsSuccessTrue(t *testing.T) {
+	tr := true
+	req := user.AuthLoginRequest{
+		Context: validUserContext(),
+		Method:  "email",
+		Success: &tr,
+	}
+	if errs := req.Validate(); len(errs) != 0 {
+		t.Fatalf("expected no errors for explicit true, got %+v", errs)
+	}
+}
+
+// --- AuthLogout required primitive fields ---
+
+func TestAuthLogout_Validate_RejectsMissingDuration(t *testing.T) {
+	req := user.AuthLogoutRequest{
+		Context: validUserContext(),
+		// DurationSeconds omitted (nil)
+	}
+	errs := req.Validate()
+	if !containsField(errs, "duration_seconds") {
+		t.Fatalf("expected duration_seconds error for missing int64, got %+v", errs)
+	}
+}
+
 // --- CartCheckout ---
 
 func TestCartCheckout_Validate_RejectsMissingCartID(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
-		ItemCount:     1,
-		SubtotalCents: 100,
+		ItemCount:     int64p(1),
+		SubtotalCents: int64p(100),
 		Currency:      "USD",
 	}
 	errs := req.Validate()
@@ -141,8 +195,8 @@ func TestCartCheckout_Validate_RejectsBadCurrency(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
 		CartID:        "cart-1",
-		ItemCount:     1,
-		SubtotalCents: 100,
+		ItemCount:     int64p(1),
+		SubtotalCents: int64p(100),
 		Currency:      "BTC",
 	}
 	errs := req.Validate()
@@ -151,12 +205,38 @@ func TestCartCheckout_Validate_RejectsBadCurrency(t *testing.T) {
 	}
 }
 
+func TestCartCheckout_Validate_RejectsMissingItemCount(t *testing.T) {
+	req := user.CartCheckoutRequest{
+		Context:       validUserContext(),
+		CartID:        "cart-1",
+		SubtotalCents: int64p(100),
+		Currency:      "USD",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "item_count") {
+		t.Fatalf("expected item_count error, got %+v", errs)
+	}
+}
+
+func TestCartCheckout_Validate_RejectsMissingSubtotalCents(t *testing.T) {
+	req := user.CartCheckoutRequest{
+		Context:   validUserContext(),
+		CartID:    "cart-1",
+		ItemCount: int64p(1),
+		Currency:  "USD",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "subtotal_cents") {
+		t.Fatalf("expected subtotal_cents error, got %+v", errs)
+	}
+}
+
 func TestCartCheckout_ToProto_RoundTrip(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
 		CartID:        "cart-42",
-		ItemCount:     7,
-		SubtotalCents: 1999,
+		ItemCount:     int64p(7),
+		SubtotalCents: int64p(1999),
 		Currency:      "GBP",
 	}
 	env := req.ToProto()

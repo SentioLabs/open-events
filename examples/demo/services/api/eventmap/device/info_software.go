@@ -30,10 +30,10 @@ type VersionsRequest struct {
 type InfoSoftwareRequest struct {
 	Context                DeviceContext   `json:"context"`
 	SerialNumber           string          `json:"serial_number"`
-	UniqueID               int64           `json:"unique_id"`
+	UniqueID               *int64          `json:"unique_id"` // required; pointer distinguishes 0 from omitted
 	ProductType            string          `json:"product_type"`
 	PcbaHwVersion          string          `json:"pcba_hw_version"`
-	PcbaHwManufacturedTsMs int64           `json:"pcba_hw_manufactured_timestamp_ms"`
+	PcbaHwManufacturedTsMs *int64          `json:"pcba_hw_manufactured_timestamp_ms"` // required; pointer distinguishes 0 from omitted
 	Versions               VersionsRequest `json:"versions"`
 }
 
@@ -43,8 +43,14 @@ func (r InfoSoftwareRequest) Validate() []eventmap.FieldError {
 	if r.SerialNumber == "" {
 		errs = append(errs, eventmap.FieldError{Field: "serial_number", Message: "required"})
 	}
+	if r.UniqueID == nil {
+		errs = append(errs, eventmap.FieldError{Field: "unique_id", Message: "required"})
+	}
 	if r.ProductType == "" {
 		errs = append(errs, eventmap.FieldError{Field: "product_type", Message: "required"})
+	}
+	if r.PcbaHwManufacturedTsMs == nil {
+		errs = append(errs, eventmap.FieldError{Field: "pcba_hw_manufactured_timestamp_ms", Message: "required"})
 	}
 	return errs
 }
@@ -60,10 +66,10 @@ func (r InfoSoftwareRequest) ToProto() eventmap.EnvelopeMessage {
 		Context:      contextToProto(r.Context),
 		Properties: &devicepb.DeviceInfoSoftwareV1Properties{
 			SerialNumber:                  proto.String(r.SerialNumber),
-			UniqueId:                      proto.Int64(r.UniqueID),
+			UniqueId:                      proto.Int64(*r.UniqueID),
 			ProductType:                   proto.String(r.ProductType),
 			PcbaHwVersion:                 proto.String(r.PcbaHwVersion),
-			PcbaHwManufacturedTimestampMs: proto.Int64(r.PcbaHwManufacturedTsMs),
+			PcbaHwManufacturedTimestampMs: proto.Int64(*r.PcbaHwManufacturedTsMs),
 			Versions: &devicepb.DeviceInfoSoftwareV1Properties_Versions{
 				ZephyrKernelVersion:      proto.String(r.Versions.ZephyrKernelVersion),
 				ZephyrKernelGitSha:       proto.String(r.Versions.ZephyrKernelGitSha),

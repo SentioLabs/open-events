@@ -28,7 +28,7 @@ type ModulePcbVersionRequest struct {
 type InfoHardwareRequest struct {
 	Context             DeviceContext              `json:"context"`
 	UniqueID            string                     `json:"unique_id"`
-	ManufacturingTs     int64                      `json:"manufacturing_timestamp"` // unix epoch seconds
+	ManufacturingTs     string                     `json:"manufacturing_timestamp"` // RFC3339 timestamp string
 	EepromFormatVersion EepromFormatVersionRequest `json:"eeprom_format_version"`
 	ModulePcbVersion    ModulePcbVersionRequest    `json:"module_pcb_version"`
 	SensorType          string                     `json:"sensor_type"` // "co"|"alcohol"|"oxygen"|"fuel_cell"
@@ -70,8 +70,10 @@ func (r InfoHardwareRequest) ToProto() eventmap.EnvelopeMessage {
 			Minor: proto.Int64(r.ModulePcbVersion.Minor),
 		},
 	}
-	if r.ManufacturingTs != 0 {
-		props.ManufacturingTimestamp = timestamppb.New(time.Unix(r.ManufacturingTs, 0))
+	if r.ManufacturingTs != "" {
+		if t, err := time.Parse(time.RFC3339, r.ManufacturingTs); err == nil {
+			props.ManufacturingTimestamp = timestamppb.New(t)
+		}
 	}
 	if r.FuelCellLotNumber != "" {
 		props.FuelCellLotNumber = proto.String(r.FuelCellLotNumber)

@@ -13,8 +13,8 @@ import (
 // IncidentTemperatureRequest is the JSON body for POST /v1/events/device/incident/temperature.
 type IncidentTemperatureRequest struct {
 	Context    DeviceContext `json:"context"`
-	DegreesC   float64       `json:"degrees_c"`
-	ThresholdC float64       `json:"threshold_c"`
+	DegreesC   *float64      `json:"degrees_c"`   // required; pointer distinguishes 0.0 from omitted
+	ThresholdC *float64      `json:"threshold_c"` // required; pointer distinguishes 0.0 from omitted
 	BreachType string        `json:"breach_type"` // "over"|"under"
 }
 
@@ -26,6 +26,12 @@ var breachTypeByName = map[string]devicepb.DeviceIncidentTemperatureV1Properties
 // Validate returns field-level errors for the request, empty on success.
 func (r IncidentTemperatureRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
+	if r.DegreesC == nil {
+		errs = append(errs, eventmap.FieldError{Field: "degrees_c", Message: "required"})
+	}
+	if r.ThresholdC == nil {
+		errs = append(errs, eventmap.FieldError{Field: "threshold_c", Message: "required"})
+	}
 	if _, ok := breachTypeByName[r.BreachType]; !ok {
 		errs = append(errs, eventmap.FieldError{Field: "breach_type", Message: "must be one of over|under"})
 	}
@@ -42,8 +48,8 @@ func (r IncidentTemperatureRequest) ToProto() eventmap.EnvelopeMessage {
 		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &devicepb.DeviceIncidentTemperatureV1Properties{
-			DegreesC:   proto.Float64(r.DegreesC),
-			ThresholdC: proto.Float64(r.ThresholdC),
+			DegreesC:   proto.Float64(*r.DegreesC),
+			ThresholdC: proto.Float64(*r.ThresholdC),
 			BreachType: breachTypeByName[r.BreachType].Enum(),
 		},
 	}

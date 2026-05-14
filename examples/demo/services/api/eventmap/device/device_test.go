@@ -24,6 +24,9 @@ func containsField(errs []eventmap.FieldError, field string) bool {
 	})
 }
 
+func float64p(v float64) *float64 { return &v }
+func int64p(v int64) *int64       { return &v }
+
 // --- InfoHardware ---
 
 func TestInfoHardware_Validate_RejectsMissingDeviceID(t *testing.T) {
@@ -54,7 +57,7 @@ func TestInfoHardware_ToProto_RoundTrip(t *testing.T) {
 	req := device.InfoHardwareRequest{
 		Context:             validDeviceContext(),
 		UniqueID:            "abc123",
-		ManufacturingTs:     "2024-01-01T00:00:00Z",
+		ManufacturingTs:     "2024-01-01T00:00:00Z", // RFC3339 string
 		SensorType:          "oxygen",
 		EepromFormatVersion: device.EepromFormatVersionRequest{Major: 1, Minor: 0},
 		ModulePcbVersion:    device.ModulePcbVersionRequest{Major: 2, Minor: 1},
@@ -87,8 +90,8 @@ func TestInfoHardware_ToProto_RoundTrip(t *testing.T) {
 func TestIncidentTemperature_Validate_RejectsBadBreachType(t *testing.T) {
 	req := device.IncidentTemperatureRequest{
 		Context:    validDeviceContext(),
-		DegreesC:   45.0,
-		ThresholdC: 40.0,
+		DegreesC:   float64p(45.0),
+		ThresholdC: float64p(40.0),
 		BreachType: "extreme",
 	}
 	errs := req.Validate()
@@ -97,11 +100,35 @@ func TestIncidentTemperature_Validate_RejectsBadBreachType(t *testing.T) {
 	}
 }
 
+func TestIncidentTemperature_Validate_RejectsMissingDegreesC(t *testing.T) {
+	req := device.IncidentTemperatureRequest{
+		Context:    validDeviceContext(),
+		ThresholdC: float64p(40.0),
+		BreachType: "over",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "degrees_c") {
+		t.Fatalf("expected degrees_c error, got %+v", errs)
+	}
+}
+
+func TestIncidentTemperature_Validate_RejectsMissingThresholdC(t *testing.T) {
+	req := device.IncidentTemperatureRequest{
+		Context:    validDeviceContext(),
+		DegreesC:   float64p(45.0),
+		BreachType: "over",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "threshold_c") {
+		t.Fatalf("expected threshold_c error, got %+v", errs)
+	}
+}
+
 func TestIncidentTemperature_ToProto_RoundTrip(t *testing.T) {
 	req := device.IncidentTemperatureRequest{
 		Context:    validDeviceContext(),
-		DegreesC:   45.5,
-		ThresholdC: 40.0,
+		DegreesC:   float64p(45.5),
+		ThresholdC: float64p(40.0),
 		BreachType: "over",
 	}
 	env := req.ToProto()
@@ -121,13 +148,93 @@ func TestIncidentTemperature_ToProto_RoundTrip(t *testing.T) {
 	}
 }
 
+// --- IncidentDrop ---
+
+func TestIncidentDrop_Validate_RejectsMissingPeakAccelerationG(t *testing.T) {
+	req := device.IncidentDropRequest{
+		Context:    validDeviceContext(),
+		DurationMs: int64p(100),
+		Axis:       "x",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "peak_acceleration_g") {
+		t.Fatalf("expected peak_acceleration_g error, got %+v", errs)
+	}
+}
+
+func TestIncidentDrop_Validate_RejectsMissingDurationMs(t *testing.T) {
+	req := device.IncidentDropRequest{
+		Context:           validDeviceContext(),
+		PeakAccelerationG: float64p(9.8),
+		Axis:              "x",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "duration_ms") {
+		t.Fatalf("expected duration_ms error, got %+v", errs)
+	}
+}
+
+// --- InfoCalibration ---
+
+func TestInfoCalibration_Validate_RejectsMissingConcentration(t *testing.T) {
+	req := device.InfoCalibrationRequest{
+		Context:   validDeviceContext(),
+		Integral:  int64p(42),
+		Timestamp: int64p(1700000000),
+	}
+	errs := req.Validate()
+	if !containsField(errs, "concentration") {
+		t.Fatalf("expected concentration error, got %+v", errs)
+	}
+}
+
+func TestInfoCalibration_Validate_RejectsMissingTimestamp(t *testing.T) {
+	req := device.InfoCalibrationRequest{
+		Context:       validDeviceContext(),
+		Concentration: float64p(0.95),
+		Integral:      int64p(42),
+	}
+	errs := req.Validate()
+	if !containsField(errs, "timestamp") {
+		t.Fatalf("expected timestamp error, got %+v", errs)
+	}
+}
+
+// --- InfoSoftware ---
+
+func TestInfoSoftware_Validate_RejectsMissingUniqueID(t *testing.T) {
+	req := device.InfoSoftwareRequest{
+		Context:                validDeviceContext(),
+		SerialNumber:           "SN-123",
+		ProductType:            "z9",
+		PcbaHwManufacturedTsMs: int64p(1700000000000),
+	}
+	errs := req.Validate()
+	if !containsField(errs, "unique_id") {
+		t.Fatalf("expected unique_id error, got %+v", errs)
+	}
+}
+
+func TestInfoSoftware_Validate_RejectsMissingPcbaTimestamp(t *testing.T) {
+	req := device.InfoSoftwareRequest{
+		Context:      validDeviceContext(),
+		SerialNumber: "SN-123",
+		UniqueID:     int64p(42),
+		ProductType:  "z9",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "pcba_hw_manufactured_timestamp_ms") {
+		t.Fatalf("expected pcba_hw_manufactured_timestamp_ms error, got %+v", errs)
+	}
+}
+
 // --- DiagnosticsStackUsage ---
 
 func TestDiagnosticsStackUsage_Validate_RejectsMissingHighestUsageThread(t *testing.T) {
 	req := device.DiagnosticsStackUsageRequest{
 		Context:             validDeviceContext(),
-		ThreadCount:         1,
-		HighestUsagePercent: 50,
+		ThreadCount:         int64p(1),
+		HighestUsagePercent: int64p(50),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "highest_usage_thread") {
@@ -138,16 +245,16 @@ func TestDiagnosticsStackUsage_Validate_RejectsMissingHighestUsageThread(t *test
 func TestDiagnosticsStackUsage_ToProto_ThreadMapping(t *testing.T) {
 	req := device.DiagnosticsStackUsageRequest{
 		Context:             validDeviceContext(),
-		ThreadCount:         1,
-		HighestUsagePercent: 75,
+		ThreadCount:         int64p(1),
+		HighestUsagePercent: int64p(75),
 		HighestUsageThread:  "main",
 		Threads: []device.ThreadRequest{
 			{
 				Name:           "main",
-				StackSizeBytes: 4096,
-				StackUsedBytes: 3072,
-				UsagePercent:   75,
-				Priority:       5,
+				StackSizeBytes: int64p(4096),
+				StackUsedBytes: int64p(3072),
+				UsagePercent:   int64p(75),
+				Priority:       int64p(5),
 				State:          "running",
 			},
 		},
