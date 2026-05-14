@@ -43,10 +43,11 @@ type File struct {
 }
 
 type Message struct {
-	Name        string
-	Description string
-	Fields      []Field
-	Enums       []Enum
+	Name           string
+	Description    string
+	Fields         []Field
+	Enums          []Enum
+	NestedMessages []Message
 }
 
 type Field struct {

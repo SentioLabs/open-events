@@ -247,7 +247,7 @@ func lowerDomainContext(domainName string, contextFields map[string]registry.Fie
 		}
 		usedNumbers[locked.ProtoNumber] = name
 
-		lowered, enum, err := lowerField(field, locked.ProtoNumber, "context."+name)
+		lowered, enum, _, err := lowerField(field, locked.ProtoNumber, "context."+name)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -361,7 +361,7 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 		}
 		usedNumbers[locked.ProtoNumber] = name
 
-		lowered, enum, err := lowerField(field, locked.ProtoNumber, "events."+key+".properties."+name)
+		lowered, enum, nestedMsg, err := lowerField(field, locked.ProtoNumber, "events."+key+".properties."+name)
 		if err != nil {
 			return Message{}, err
 		}
@@ -391,6 +391,9 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 
 			message.Enums = append(message.Enums, *enum)
 		}
+		if nestedMsg != nil {
+			message.NestedMessages = append(message.NestedMessages, *nestedMsg)
+		}
 	}
 
 	return message, nil
@@ -418,7 +421,7 @@ func envelopeMessage(event registry.Event) Message {
 	return envelopeMessageWithContext(event, "Context")
 }
 
-func lowerField(field registry.Field, number int, path string) (Field, *Enum, error) {
+func lowerField(field registry.Field, number int, path string) (Field, *Enum, *Message, error) {
 	lowered := Field{
 		Name:        field.Name,
 		Number:      number,
@@ -451,47 +454,102 @@ func lowerField(field registry.Field, number int, path string) (Field, *Enum, er
 	case registry.FieldTypeEnum:
 		enumName := EnumTypeName(field.Name)
 		if enumName == "" {
-			return Field{}, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid enum type name", path, field.Name)
+			return Field{}, nil, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid enum type name", path, field.Name)
 		}
 		if err := isValidProtoMessageName(enumName); err != nil {
-			return Field{}, nil, fmt.Errorf("%s: enum type name %q is invalid: %w", path, enumName, err)
+			return Field{}, nil, nil, fmt.Errorf("%s: enum type name %q is invalid: %w", path, enumName, err)
 		}
 		values, err := buildEnumValues(enumName, field.Values, path)
 		if err != nil {
-			return Field{}, nil, err
+			return Field{}, nil, nil, err
 		}
 		lowered.Type = TypeRef{Enum: enumName}
 		lowered.Optional = true
-		return lowered, &Enum{Name: enumName, Values: values}, nil
+		return lowered, &Enum{Name: enumName, Values: values}, nil, nil
 	case registry.FieldTypeArray:
 		if field.Items == nil {
-			return Field{}, nil, fmt.Errorf("%s.items: array fields must define items", path)
+			return Field{}, nil, nil, fmt.Errorf("%s.items: array fields must define items", path)
 		}
 		if field.Items.Type == registry.FieldTypeObject {
-			return Field{}, nil, fmt.Errorf("%s.items: array of object is not supported", path)
+			// Generate a nested message for the array element type.
+			nestedMsgName := pascalCase(field.Name)
+			if nestedMsgName == "" {
+				return Field{}, nil, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid nested message name", path, field.Name)
+			}
+			nestedMsg, err := lowerObjectToMessage(nestedMsgName, field.Items.Properties, path+".items")
+			if err != nil {
+				return Field{}, nil, nil, err
+			}
+			lowered.Type = TypeRef{Message: nestedMsgName}
+			lowered.Repeated = true
+			lowered.Optional = false
+			return lowered, nil, nestedMsg, nil
 		}
 		if field.Items.Type == registry.FieldTypeEnum {
-			return Field{}, nil, fmt.Errorf("%s.items: array of enum is not supported", path)
+			return Field{}, nil, nil, fmt.Errorf("%s.items: array of enum is not supported", path)
 		}
 		if field.Items.Type == registry.FieldTypeArray {
-			return Field{}, nil, fmt.Errorf("%s.items: array of array is not supported", path)
+			return Field{}, nil, nil, fmt.Errorf("%s.items: array of array is not supported", path)
 		}
 		item := *field.Items
 		item.Name = field.Name
-		loweredItem, _, err := lowerField(item, number, path+".items")
+		loweredItem, _, _, err := lowerField(item, number, path+".items")
 		if err != nil {
-			return Field{}, nil, err
+			return Field{}, nil, nil, err
 		}
 		lowered.Type = loweredItem.Type
 		lowered.Repeated = true
 		lowered.Optional = false
 	case registry.FieldTypeObject:
-		return Field{}, nil, fmt.Errorf("%s: object fields are not supported", path)
+		// Generate a nested message for the object type.
+		nestedMsgName := pascalCase(field.Name)
+		if nestedMsgName == "" {
+			return Field{}, nil, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid nested message name", path, field.Name)
+		}
+		if len(field.Properties) == 0 {
+			return Field{}, nil, nil, fmt.Errorf("%s: object fields must define properties", path)
+		}
+		nestedMsg, err := lowerObjectToMessage(nestedMsgName, field.Properties, path)
+		if err != nil {
+			return Field{}, nil, nil, err
+		}
+		lowered.Type = TypeRef{Message: nestedMsgName}
+		lowered.Optional = true
+		return lowered, nil, nestedMsg, nil
 	default:
-		return Field{}, nil, fmt.Errorf("%s: unsupported field type %q", path, field.Type)
+		return Field{}, nil, nil, fmt.Errorf("%s: unsupported field type %q", path, field.Type)
 	}
 
-	return lowered, nil, nil
+	return lowered, nil, nil, nil
+}
+
+// lowerObjectToMessage builds a nested Message from an object's sub-properties.
+// Proto numbers are assigned sequentially starting at 1, ordered by sorted field name.
+// Enum sub-fields are collected into the nested message's Enums slice.
+func lowerObjectToMessage(msgName string, properties map[string]registry.Field, path string) (*Message, error) {
+	names := sortedRegistryFieldNames(properties)
+	msg := &Message{
+		Name:   msgName,
+		Fields: make([]Field, 0, len(names)),
+		Enums:  []Enum{},
+	}
+	for i, name := range names {
+		field := properties[name]
+		if err := isValidProtoIdentifier(name); err != nil {
+			return nil, fmt.Errorf("%s.%s: %w", path, name, err)
+		}
+		// Nested object sub-fields use sequential numbers starting at 1.
+		number := i + 1
+		lowered, enum, _, err := lowerField(field, number, path+"."+name)
+		if err != nil {
+			return nil, err
+		}
+		msg.Fields = append(msg.Fields, lowered)
+		if enum != nil {
+			msg.Enums = append(msg.Enums, *enum)
+		}
+	}
+	return msg, nil
 }
 
 func sortedRegistryFieldNames(fields map[string]registry.Field) []string {

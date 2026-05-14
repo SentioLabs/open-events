@@ -120,13 +120,52 @@ func TestBuildEnumValuesRejectsCollisions(t *testing.T) {
 	}
 }
 
-func TestBuildEnumValuesRejectsUnspecifiedCollision(t *testing.T) {
-	_, err := buildEnumValues("PaymentMethod", []string{"unspecified"}, "events.checkout.completed@1.properties.payment_method")
-	if err == nil {
-		t.Fatalf("buildEnumValues() error = nil, want collision with reserved zero value")
+func TestBuildEnumValuesAbsorbsUnspecifiedAsZeroValue(t *testing.T) {
+	// An explicit "unspecified" value in the registry maps to the proto zero value
+	// and is silently absorbed (not emitted as a numbered value) since proto3
+	// always synthesizes a zero value for the enum type.
+	tests := []struct {
+		name   string
+		values []string
+		want   []EnumValue // only numbered values; zero-value aliases are absorbed
+	}{
+		{
+			name:   "unspecified only",
+			values: []string{"unspecified"},
+			want:   []EnumValue{},
+		},
+		{
+			name:   "unspecified first then others",
+			values: []string{"unspecified", "co", "alcohol"},
+			want: []EnumValue{
+				{Name: "SENSOR_TYPE_CO", Original: "co", Number: 1},
+				{Name: "SENSOR_TYPE_ALCOHOL", Original: "alcohol", Number: 2},
+			},
+		},
+		{
+			name:   "UNSPECIFIED uppercase absorbed",
+			values: []string{"UNSPECIFIED", "running"},
+			want: []EnumValue{
+				{Name: "SENSOR_TYPE_RUNNING", Original: "running", Number: 1},
+			},
+		},
 	}
-	if !strings.Contains(strings.ToLower(err.Error()), "unspecified") || !strings.Contains(strings.ToLower(err.Error()), "reserved") {
-		t.Fatalf("buildEnumValues() error = %q, want mention of reserved unspecified", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := buildEnumValues("SensorType", tt.values, "test.path")
+			if err != nil {
+				t.Fatalf("buildEnumValues() error = %v, want nil", err)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("buildEnumValues() returned %d values, want %d: %v", len(got), len(tt.want), got)
+			}
+			for i, v := range got {
+				if v != tt.want[i] {
+					t.Errorf("buildEnumValues()[%d] = %+v, want %+v", i, v, tt.want[i])
+				}
+			}
+		})
 	}
 }
 

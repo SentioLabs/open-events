@@ -77,22 +77,26 @@ func Render(reg schemair.Registry, outDir string) error {
 	}
 
 	// Emit legacy single-file output (backward compatibility).
-	for _, file := range reg.Files {
-		protoPath, err := resolveProtoOutputPath(protoRoot, file.Path)
-		if err != nil {
-			return err
-		}
+	// When per-domain specs are present, the legacy file is superseded by the
+	// per-domain protos; do not emit it to avoid cross-package reference errors.
+	if len(reg.DomainSpecs) == 0 {
+		for _, file := range reg.Files {
+			protoPath, err := resolveProtoOutputPath(protoRoot, file.Path)
+			if err != nil {
+				return err
+			}
 
-		protoBytes, err := RenderFile(file)
-		if err != nil {
-			return err
-		}
+			protoBytes, err := RenderFile(file)
+			if err != nil {
+				return err
+			}
 
-		if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
-			return fmt.Errorf("create proto directory for %q: %w", file.Path, err)
-		}
-		if err := os.WriteFile(protoPath, protoBytes, 0o644); err != nil {
-			return fmt.Errorf("write proto file %q: %w", file.Path, err)
+			if err := os.MkdirAll(filepath.Dir(protoPath), 0o755); err != nil {
+				return fmt.Errorf("create proto directory for %q: %w", file.Path, err)
+			}
+			if err := os.WriteFile(protoPath, protoBytes, 0o644); err != nil {
+				return fmt.Errorf("write proto file %q: %w", file.Path, err)
+			}
 		}
 	}
 
@@ -134,10 +138,19 @@ func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error)
 	nsPath := namespaceToPath(namespace)
 	pkg := namespace + "." + ds.Name + ".v1"
 	commonImport := nsPath + "/common/v1/common.proto"
+	// Client is in the common package; use its fully-qualified name so buf lint passes.
+	commonPkg := namespace + ".common.v1"
+	fqnClient := commonPkg + ".Client"
+
+	// Determine if any event uses timestamp so we can emit the WKT import.
+	usesTimestamp := domainUsesTimestamp(ds)
 
 	var b strings.Builder
 	b.WriteString("syntax = \"proto3\";\n\n")
 	fmt.Fprintf(&b, "package %s;\n\n", pkg)
+	if usesTimestamp {
+		b.WriteString("import \"google/protobuf/timestamp.proto\";\n")
+	}
 	fmt.Fprintf(&b, "import %s;\n\n", strconv.Quote(commonImport))
 
 	// Render context message.
@@ -151,9 +164,12 @@ func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error)
 	}
 
 	// Render event messages (envelope + properties pairs).
+	// Rewrite bare "Client" references to the fully-qualified name so the
+	// proto compiler can resolve the cross-package reference.
 	for _, de := range ds.Events {
 		b.WriteString("\n")
-		if err := renderMessage(&b, de.Envelope); err != nil {
+		envelope := qualifyClientInMessage(de.Envelope, fqnClient)
+		if err := renderMessage(&b, envelope); err != nil {
 			return nil, err
 		}
 		b.WriteString("\n")
@@ -163,6 +179,33 @@ func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error)
 	}
 
 	return []byte(b.String()), nil
+}
+
+// domainUsesTimestamp reports whether any event envelope in ds references a
+// timestamp scalar (event_ts is always a timestamp in the envelope).
+func domainUsesTimestamp(ds schemair.DomainSpec) bool {
+	for _, de := range ds.Events {
+		for _, f := range de.Envelope.Fields {
+			if f.Type.Scalar == "timestamp" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// qualifyClientInMessage returns a copy of msg where any field whose
+// TypeRef.Message is "Client" is replaced with fqnClient.
+func qualifyClientInMessage(msg schemair.Message, fqnClient string) schemair.Message {
+	fields := make([]schemair.Field, len(msg.Fields))
+	copy(fields, msg.Fields)
+	for i, f := range fields {
+		if f.Type.Message == "Client" {
+			fields[i].Type.Message = fqnClient
+		}
+	}
+	msg.Fields = fields
+	return msg
 }
 
 // RenderFile renders one schema IR file as a proto3 file.
@@ -316,9 +359,63 @@ func renderMessage(b *strings.Builder, message schemair.Message) error {
 		}
 		renderEnum(b, enum)
 	}
+
+	// Emit nested messages (e.g. generated from array-of-object fields).
+	for _, nested := range message.NestedMessages {
+		b.WriteString("\n")
+		if err := renderNestedMessage(b, nested); err != nil {
+			return err
+		}
+	}
+
 	b.WriteString("}\n")
 
 	return nil
+}
+
+// renderNestedMessage renders a nested message definition indented by two spaces.
+func renderNestedMessage(b *strings.Builder, message schemair.Message) error {
+	renderProtoComments(b, "  ", message.Description)
+	fmt.Fprintf(b, "  message %s {\n", message.Name)
+	for _, field := range message.Fields {
+		fieldPath := message.Name + "." + field.Name
+		kind, _, err := typeRefKindAndType(field, fieldPath)
+		if err != nil {
+			return err
+		}
+		fieldType, err := protoFieldType(field, fieldPath)
+		if err != nil {
+			return err
+		}
+
+		renderProtoComments(b, "    ", field.Description)
+		label := ""
+		switch {
+		case field.Repeated:
+			label = "repeated "
+		case field.Optional && (kind == "scalar" || kind == "enum"):
+			label = "optional "
+		}
+		fmt.Fprintf(b, "    %s%s %s = %d;\n", label, fieldType, field.Name, field.Number)
+	}
+	for i, enum := range message.Enums {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		renderNestedEnum(b, enum)
+	}
+	b.WriteString("  }\n")
+	return nil
+}
+
+// renderNestedEnum renders an enum definition indented inside a nested message.
+func renderNestedEnum(b *strings.Builder, enum schemair.Enum) {
+	fmt.Fprintf(b, "    enum %s {\n", enum.Name)
+	fmt.Fprintf(b, "      %s = 0;\n", schemair.EnumZeroValueName(enum.Name))
+	for _, value := range enum.Values {
+		fmt.Fprintf(b, "      %s = %d;\n", value.Name, value.Number)
+	}
+	b.WriteString("    }\n")
 }
 
 func renderEnum(b *strings.Builder, enum schemair.Enum) {

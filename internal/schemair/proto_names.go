@@ -167,7 +167,16 @@ func buildEnumValues(enumName string, values []string, fieldPath string) ([]Enum
 	reservedZeroName := prefix + "_UNSPECIFIED"
 	byName[reservedZeroName] = "<reserved zero value>"
 
+	nextNumber := 1
 	for i, raw := range values {
+		// Check if this value normalizes to the zero-value name (e.g. "unspecified").
+		// Proto3 always synthesizes a zero value for every enum type, so explicit
+		// unspecified entries from the registry are silently absorbed as the zero value
+		// alias rather than emitted as a numbered entry.
+		if isEnumZeroValueAlias(raw) {
+			continue
+		}
+
 		name, err := EnumValueName(enumName, raw)
 		if err != nil {
 			return nil, fmt.Errorf("%s.values[%d]: %w", fieldPath, i, err)
@@ -179,9 +188,25 @@ func buildEnumValues(enumName string, values []string, fieldPath string) ([]Enum
 			return nil, fmt.Errorf("enum values collide after normalization at %s: %q and %q both map to %q", fieldPath, first, raw, name)
 		}
 		byName[name] = raw
-		out = append(out, EnumValue{Name: name, Original: raw, Number: i + 1})
+		out = append(out, EnumValue{Name: name, Original: raw, Number: nextNumber})
+		nextNumber++
 	}
 	return out, nil
+}
+
+// isEnumZeroValueAlias reports whether raw normalizes to "UNSPECIFIED",
+// meaning it is a user-authored alias for the proto3 synthesized zero value.
+func isEnumZeroValueAlias(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	parts := splitIdentifier(raw)
+	if len(parts) == 0 {
+		return false
+	}
+	joined := strings.Join(parts, "_")
+	return strings.EqualFold(joined, "UNSPECIFIED")
 }
 
 func namespaceParts(namespace string) ([]string, error) {

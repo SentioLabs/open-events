@@ -628,6 +628,73 @@ func domainRegistryWithEnum() schemair.Registry {
 	}
 }
 
+// TestRenderDomainProtoArrayOfObjectEmitsNestedMessage verifies that a
+// properties message with an array-of-object field renders a nested message
+// and a repeated field referencing it.
+func TestRenderDomainProtoArrayOfObjectEmitsNestedMessage(t *testing.T) {
+	ds := schemair.DomainSpec{
+		Name:          "device",
+		ContextName:   "DeviceContext",
+		ContextFields: []schemair.Field{},
+		ContextEnums:  []schemair.Enum{},
+		Events: []schemair.DomainEvent{
+			{
+				Envelope: schemair.Message{
+					Name: "DiagnosticsStackUsageV1",
+					Fields: []schemair.Field{
+						{Name: "event_name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}},
+						{Name: "event_version", Number: 2, Type: schemair.TypeRef{Scalar: "integer"}},
+						{Name: "event_id", Number: 3, Type: schemair.TypeRef{Scalar: "uuid"}},
+						{Name: "event_ts", Number: 4, Type: schemair.TypeRef{Scalar: "timestamp"}},
+						{Name: "client", Number: 5, Type: schemair.TypeRef{Message: "Client"}},
+						{Name: "context", Number: 6, Type: schemair.TypeRef{Message: "DeviceContext"}},
+						{Name: "properties", Number: 7, Type: schemair.TypeRef{Message: "DiagnosticsStackUsageV1Properties"}},
+					},
+				},
+				Properties: schemair.Message{
+					Name: "DiagnosticsStackUsageV1Properties",
+					Fields: []schemair.Field{
+						{Name: "thread_count", Number: 1, Type: schemair.TypeRef{Scalar: "integer"}, Optional: true},
+						{Name: "threads", Number: 2, Type: schemair.TypeRef{Message: "Threads"}, Repeated: true},
+					},
+					NestedMessages: []schemair.Message{
+						{
+							Name: "Threads",
+							Fields: []schemair.Field{
+								{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+								{Name: "stack_size_bytes", Number: 2, Type: schemair.TypeRef{Scalar: "integer"}, Optional: true},
+								{Name: "state", Number: 3, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	got, err := RenderDomainProto("com.acme.platform", ds)
+	if err != nil {
+		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
+	}
+	text := string(got)
+
+	// The nested message must be emitted inside Properties.
+	if !strings.Contains(text, "message Threads {") {
+		t.Fatalf("domain proto missing nested Threads message:\n%s", text)
+	}
+	// The threads field must be repeated.
+	if !strings.Contains(text, "repeated Threads threads = 2;") {
+		t.Fatalf("domain proto missing repeated Threads field:\n%s", text)
+	}
+	// The nested message must contain the sub-fields.
+	if !strings.Contains(text, "optional string name = 1;") {
+		t.Fatalf("domain proto Threads nested message missing name field:\n%s", text)
+	}
+	if !strings.Contains(text, "optional int64 stack_size_bytes = 2;") {
+		t.Fatalf("domain proto Threads nested message missing stack_size_bytes field:\n%s", text)
+	}
+}
+
 // legacyRegistry returns a Registry using the legacy single-file Files shape for
 // backward-compatibility tests (no DomainSpecs).
 func legacyRegistry() schemair.Registry {

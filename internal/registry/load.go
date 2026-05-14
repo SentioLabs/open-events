@@ -52,16 +52,41 @@ func Load(path string) (Registry, Diagnostics) {
 		return Registry{}, Diagnostics{{Location: path, Message: err.Error()}}
 	}
 
-	// Collect domain names in sorted order for determinism
+	// Collect domain names in sorted order for determinism.
+	// Directories starting with '.' (e.g. .openevents/) are skipped silently.
+	// Other directories are treated as domains only if they contain a domain.yml.
+	// Directories without domain.yml and without any YAML files (e.g. generated
+	// output directories like gen/) are skipped silently; directories with YAML
+	// files but no domain.yml produce a diagnostic error.
+	var allDiags Diagnostics
 	var domainNames []string
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if !entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), ".") {
+			// Hidden directories (e.g. .openevents/) are never domain directories.
+			continue
+		}
+		domainDir := filepath.Join(path, entry.Name())
+		domainYMLPath := filepath.Join(domainDir, "domain.yml")
+		if _, err := os.Stat(domainYMLPath); err == nil {
+			// domain.yml exists — this is a domain directory.
 			domainNames = append(domainNames, entry.Name())
+			continue
+		}
+		// No domain.yml — check whether this directory contains any YAML files.
+		// If it does, it looks like a misconfigured domain and we surface an error.
+		// If it has no YAML files, it is likely an output directory and we skip it.
+		if dirHasYAMLFiles(domainDir) {
+			allDiags = append(allDiags, Diagnostic{
+				Location: domainYMLPath,
+				Message:  fmt.Sprintf("domain.yml: open %s: no such file or directory", domainYMLPath),
+			})
 		}
 	}
 	sort.Strings(domainNames)
 
-	var allDiags Diagnostics
 	for _, domainName := range domainNames {
 		domainDir := filepath.Join(path, domainName)
 		domain, events, domDiags := loadDomain(domainDir, domainName)
@@ -214,6 +239,24 @@ func decodeStrictYAML(data []byte, v interface{}) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	return decoder.Decode(v)
+}
+
+// dirHasYAMLFiles reports whether dir contains at least one file with a .yml
+// or .yaml extension anywhere in its subtree.
+func dirHasYAMLFiles(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml") {
+			found = true
+			return fmt.Errorf("stop") // stop walking early
+		}
+		return nil
+	})
+	return found
 }
 
 // normalizeOwners converts ownerYAML slice to Owner slice.
