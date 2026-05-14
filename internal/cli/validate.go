@@ -29,7 +29,7 @@ func newValidateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 				return errValidationFailed
 			}
 
-			fmt.Fprintf(out, "ok: registry valid (%d events, %d context fields)\n", len(reg.Events), len(reg.Context))
+			fmt.Fprintf(out, "ok: registry valid (%d events across %d domains)\n", len(reg.Events), len(reg.Domains))
 			return nil
 		},
 	}

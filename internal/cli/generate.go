@@ -6,7 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
+	golang "github.com/sentiolabs/open-events/internal/codegen/golang"
+	python "github.com/sentiolabs/open-events/internal/codegen/python"
 	"github.com/sentiolabs/open-events/internal/constgen"
 	"github.com/sentiolabs/open-events/internal/protogen"
 	"github.com/sentiolabs/open-events/internal/schemair"
@@ -17,18 +20,97 @@ var errGenerationFailed = errors.New("generation failed")
 
 func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "generate",
-		Short: "Generate code from an OpenEvents registry",
+		Use:   "generate <registry-path>",
+		Short: "Generate language bindings from an OpenEvents registry",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
-				return cmd.Help()
+			registryPath := args[0]
+
+			reg, _, err := loadValidatedRegistry(registryPath)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errGenerationFailed
 			}
-			fmt.Fprintf(errOut, "unknown generate target %q\n", args[0])
-			return errGenerationFailed
+
+			lock, err := readLockFile(lockFilePath(registryPath))
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errGenerationFailed
+			}
+			if err := schemair.CheckLock(lock, reg); err != nil {
+				fmt.Fprintln(errOut, err)
+				return errGenerationFailed
+			}
+
+			ir, err := schemair.FromRegistry(reg, lock)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return errGenerationFailed
+			}
+
+			// Emit proto to <registry>/.openevents/proto/
+			protoOut := filepath.Join(registryPath, ".openevents", "proto")
+			if err := protogen.Render(ir, protoOut); err != nil {
+				fmt.Fprintln(errOut, err)
+				return errGenerationFailed
+			}
+
+			// Dispatch to each configured language emitter.
+			var emitted []string
+			for _, lang := range reg.Codegen.Languages {
+				rawCfg := reg.Codegen.Configs[lang] // nil if not present — emitter uses defaults
+				switch lang {
+				case "go":
+					cfg, err := golang.ParseConfig(rawCfg, reg.Package.Go, registryPath)
+					if err != nil {
+						fmt.Fprintln(errOut, err)
+						return errGenerationFailed
+					}
+					if !filepath.IsAbs(cfg.Out) {
+						cfg.Out = filepath.Join(registryPath, cfg.Out)
+					}
+					if err := golang.Emit(reg, lock, cfg); err != nil {
+						fmt.Fprintln(errOut, err)
+						return errGenerationFailed
+					}
+					emitted = append(emitted, "go")
+				case "python":
+					cfg, err := python.ParseConfig(rawCfg, reg.Package.Python, registryPath)
+					if err != nil {
+						fmt.Fprintln(errOut, err)
+						return errGenerationFailed
+					}
+					if !filepath.IsAbs(cfg.Out) {
+						cfg.Out = filepath.Join(registryPath, cfg.Out)
+					}
+					if err := python.Emit(reg, lock, cfg); err != nil {
+						fmt.Fprintln(errOut, err)
+						return errGenerationFailed
+					}
+					emitted = append(emitted, "python")
+				default:
+					fmt.Fprintf(errOut, "unsupported language %q in codegen.languages\n", lang)
+					return errGenerationFailed
+				}
+			}
+
+			if len(emitted) > 0 {
+				fmt.Fprintf(out, "ok: generated bindings for %s\n", strings.Join(emitted, ", "))
+			} else {
+				fmt.Fprintf(out, "ok: generated proto schema in %s\n", protoOut)
+			}
+			return nil
 		},
 	}
-	cmd.AddCommand(newGenerateProtoCommand(out, errOut))
-	cmd.AddCommand(newGenerateConstantsCommand(out, errOut))
+	// Hidden debug subcommands — not shown in user-facing help.
+	protoCmd := newGenerateProtoCommand(out, errOut)
+	protoCmd.Hidden = true
+	cmd.AddCommand(protoCmd)
+
+	constantsCmd := newGenerateConstantsCommand(out, errOut)
+	constantsCmd.Hidden = true
+	cmd.AddCommand(constantsCmd)
+
 	return cmd
 }
 

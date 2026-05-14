@@ -157,9 +157,13 @@ func marshalLockFile(lock schemair.Lock) ([]byte, error) {
 }
 
 type lockFile struct {
-	Version int                        `yaml:"version"`
-	Context map[string]lockField       `yaml:"context"`
-	Events  map[string]lockEventFields `yaml:"events"`
+	Version int                         `yaml:"version"`
+	Domains map[string]lockDomainFields `yaml:"domains"`
+	Events  map[string]lockEventFields  `yaml:"events"`
+}
+
+type lockDomainFields struct {
+	Context map[string]lockField `yaml:"context"`
 }
 
 type lockEventFields struct {
@@ -181,14 +185,18 @@ type lockReservedField struct {
 }
 
 func newLockFile(lock schemair.Lock) lockFile {
-	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will rewrite
-	// this function to serialize domains. For now, Context is always empty.
 	file := lockFile{
 		Version: lock.Version,
-		Context: make(map[string]lockField),
+		Domains: make(map[string]lockDomainFields, len(lock.Domains)),
 		Events:  make(map[string]lockEventFields, len(lock.Events)),
 	}
-	_ = lock // silence unused warning; context serialization deferred to T6
+	for domainName, domain := range lock.Domains {
+		ctx := make(map[string]lockField, len(domain.Context))
+		for fieldName, locked := range domain.Context {
+			ctx[fieldName] = lockField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
+		}
+		file.Domains[domainName] = lockDomainFields{Context: ctx}
+	}
 	for k, v := range lock.Events {
 		item := lockEventFields{
 			Envelope:   make(map[string]lockField, len(v.Envelope)),
@@ -216,13 +224,18 @@ func newLockFile(lock schemair.Lock) lockFile {
 }
 
 func (f lockFile) toSchemaLock() schemair.Lock {
-	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will rewrite
-	// this function to deserialize domains. For now, Domains is always empty.
 	lock := schemair.Lock{
 		Version: f.Version,
+		Domains: make(map[string]schemair.LockedDomain, len(f.Domains)),
 		Events:  make(map[string]schemair.LockedEvent, len(f.Events)),
 	}
-	_ = f.Context // context deserialization deferred to T6
+	for domainName, domain := range f.Domains {
+		ctx := make(map[string]schemair.LockedField, len(domain.Context))
+		for fieldName, locked := range domain.Context {
+			ctx[fieldName] = schemair.LockedField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
+		}
+		lock.Domains[domainName] = schemair.LockedDomain{Context: ctx}
+	}
 	for k, v := range f.Events {
 		event := schemair.LockedEvent{
 			Envelope:   make(map[string]schemair.LockedField, len(v.Envelope)),

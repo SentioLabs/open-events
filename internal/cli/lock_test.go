@@ -8,18 +8,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sentiolabs/open-events/internal/registry"
+	"github.com/sentiolabs/open-events/internal/registry/testfx"
 	"github.com/sentiolabs/open-events/internal/schemair"
 )
 
+// buildLockRegistry builds a minimal directory-form registry for lock tests.
+func buildLockRegistry(t *testing.T) string {
+	t.Helper()
+	return testfx.New().
+		Namespace("com.example.product").
+		Package("github.com/example/product/events", "example_product.events").
+		Owner("data-platform", "data-platform@example.com").
+		Domain("user").
+		Owner("data-platform").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signed_up").Version(1).Status("active").Description("User signed up.").Done().
+		Done().
+		Write(t)
+}
+
 func TestLockUpdateWritesLockFile(t *testing.T) {
-	registryPath := t.TempDir()
-	content, err := os.ReadFile("../../examples/basic/openevents.yaml")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(registryPath, "openevents.yaml"), content, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	registryPath := buildLockRegistry(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -27,30 +37,30 @@ func TestLockUpdateWritesLockFile(t *testing.T) {
 	cmd.SetArgs([]string{"lock", "update", registryPath})
 
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error = %v", err)
+		t.Fatalf("Execute() error = %v, stderr = %s", err, stderr.String())
 	}
 	lockPath := filepath.Join(registryPath, "openevents.lock.yaml")
-	if _, err := os.Stat(lockPath); err != nil {
-		t.Fatalf("Stat(%q) error = %v", lockPath, err)
+	lock, err := readLockFile(lockPath)
+	if err != nil {
+		t.Fatalf("readLockFile(%q) error = %v", lockPath, err)
+	}
+	if got, want := len(lock.Events), 1; got != want {
+		t.Fatalf("len(lock.Events) = %d, want %d", got, want)
+	}
+	if got, want := len(lock.Domains), 1; got != want {
+		t.Fatalf("len(lock.Domains) = %d, want %d", got, want)
 	}
 }
 
 func TestLockCheckRejectsStaleLock(t *testing.T) {
-	registryPath := t.TempDir()
-	content, err := os.ReadFile("../../examples/basic/openevents.yaml")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(registryPath, "openevents.yaml"), content, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	registryPath := buildLockRegistry(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	update := NewRootCommand(&stdout, &stderr)
 	update.SetArgs([]string{"lock", "update", registryPath})
 	if err := update.Execute(); err != nil {
-		t.Fatalf("lock update Execute() error = %v", err)
+		t.Fatalf("lock update Execute() error = %v, stderr = %s", err, stderr.String())
 	}
 
 	lockPath := filepath.Join(registryPath, "openevents.lock.yaml")
@@ -58,10 +68,8 @@ func TestLockCheckRejectsStaleLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readLockFile(%q) error = %v", lockPath, err)
 	}
-	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will update this
-	// test to tamper with domains. Clear all events to simulate a stale lock.
+	// Tamper: clear all events to simulate a stale lock.
 	lock.Events = map[string]schemair.LockedEvent{}
-	_ = lock.Domains // Domains now holds per-domain context; tampering deferred to T6
 	if err := writeLockFile(lockPath, lock); err != nil {
 		t.Fatalf("writeLockFile(%q) error = %v", lockPath, err)
 	}
@@ -81,31 +89,24 @@ func TestLockCheckRejectsStaleLock(t *testing.T) {
 }
 
 func TestLockCheckRejectsNonCanonicalLockFile(t *testing.T) {
-	registryPath := t.TempDir()
-	content, err := os.ReadFile("../../examples/basic/openevents.yaml")
-	if err != nil {
-		t.Fatalf("ReadFile() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(registryPath, "openevents.yaml"), content, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	registryPath := buildLockRegistry(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	update := NewRootCommand(&stdout, &stderr)
 	update.SetArgs([]string{"lock", "update", registryPath})
 	if err := update.Execute(); err != nil {
-		t.Fatalf("lock update Execute() error = %v", err)
+		t.Fatalf("lock update Execute() error = %v, stderr = %s", err, stderr.String())
 	}
 
 	lockPath := filepath.Join(registryPath, "openevents.lock.yaml")
 	canonical, err := os.ReadFile(lockPath)
 	if err != nil {
-		t.Fatalf("ReadFile(%q) error = %v", lockPath, err)
+		t.Fatalf("os.ReadFile(%q) error = %v", lockPath, err)
 	}
 	nonCanonical := append([]byte("# non-canonical\n"), canonical...)
 	if err := os.WriteFile(lockPath, nonCanonical, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
+		t.Fatalf("os.WriteFile() error = %v", err)
 	}
 
 	stdout.Reset()
@@ -123,56 +124,26 @@ func TestLockCheckRejectsNonCanonicalLockFile(t *testing.T) {
 }
 
 func TestLockUpdateLoadsSplitDirectoryRegistry(t *testing.T) {
-	registryPath := t.TempDir()
-	root := []byte(`openevents: 0.1.0
-namespace: com.example.product
-package:
-  go: github.com/example/product/events
-  python: example_product.events
-defaults:
-  queue: product-events
-  snowflake:
-    database: ANALYTICS
-    schema: EVENTS
-owners:
-  - team: data-platform
-    email: data-platform@example.com
-context:
-  tenant_id:
-    type: string
-    required: true
-    pii: none
-`)
-	fragment := []byte(`events:
-  search.query_submitted:
-    version: 1
-    status: active
-    description: User submitted a search query.
-    owner: data-platform
-    producer: api
-    sources: [ios]
-    destination:
-      queue: product-events
-      snowflake_table: fact_search_query_submitted
-    properties:
-      query_text:
-        type: string
-        required: true
-        pii: personal
-`)
-	if err := os.WriteFile(filepath.Join(registryPath, "openevents.yaml"), root, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(registryPath, "events.yaml"), fragment, 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
+	registryPath := testfx.New().
+		Namespace("com.example.product").
+		Package("github.com/example/product/events", "example_product.events").
+		Owner("data-platform", "data-platform@example.com").
+		Domain("search").
+		Owner("data-platform").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"query"}, "query_submitted").
+		Version(1).Status("active").Description("User submitted a search query.").
+		Property("query_text", registry.FieldTypeString, true, registry.PIIPersonal).
+		Done().
+		Done().
+		Write(t)
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd := NewRootCommand(&stdout, &stderr)
 	cmd.SetArgs([]string{"lock", "update", registryPath})
 	if err := cmd.Execute(); err != nil {
-		t.Fatalf("Execute() error = %v", err)
+		t.Fatalf("Execute() error = %v, stderr = %s", err, stderr.String())
 	}
 
 	lock, err := readLockFile(filepath.Join(registryPath, "openevents.lock.yaml"))
@@ -181,6 +152,10 @@ context:
 	}
 	if got, want := len(lock.Events), 1; got != want {
 		t.Fatalf("len(lock.Events) = %d, want %d", got, want)
+	}
+	// Domain context should also be serialized.
+	if got, want := len(lock.Domains), 1; got != want {
+		t.Fatalf("len(lock.Domains) = %d, want %d", got, want)
 	}
 }
 
