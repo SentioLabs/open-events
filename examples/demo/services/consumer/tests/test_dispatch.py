@@ -1,37 +1,46 @@
 from __future__ import annotations
 
-import base64
-
+import polars as pl
 import pytest
-from com.acme.storefront.v1 import events_pb2
 
-from consumer.dispatch import decode
-from consumer.event_names import CHECKOUT_STARTED_V1
+from consumer.dispatch import DISPATCH
+from consumer.event_names import device, user
 
-
-def _sample_started_bytes() -> bytes:
-    msg = events_pb2.CheckoutStartedV1()
-    msg.event_name = "checkout.started"
-    msg.event_version = 1
-    msg.event_id = "00000000-0000-0000-0000-000000000001"
-    msg.context.tenant_id = "acme"
-    msg.context.platform = events_pb2.Context.PLATFORM_WEB
-    msg.properties.cart_id = "cart-1"
-    msg.properties.item_count = 3
-    msg.properties.subtotal_cents = 4999
-    msg.properties.currency = events_pb2.CheckoutStartedV1Properties.CURRENCY_USD
-    return msg.SerializeToString()
-
-
-def test_decode_known_bytes_yields_dict():
-    body_b64 = base64.b64encode(_sample_started_bytes()).decode()
-    row = decode(CHECKOUT_STARTED_V1, body_b64)
-    assert row["event_id"] == "00000000-0000-0000-0000-000000000001"
-    assert row["context"]["tenant_id"] == "acme"
-    assert row["context"]["platform"] == "PLATFORM_WEB"
-    assert row["properties"]["currency"] == "CURRENCY_USD"
+ALL_EVENT_NAMES = [
+    user.AUTH_SIGNUP_V1,
+    user.AUTH_LOGIN_V1,
+    user.AUTH_LOGOUT_V1,
+    user.CART_CHECKOUT_V1,
+    user.CART_PURCHASE_V1,
+    user.CART_ITEM_ADDED_V1,
+    device.INFO_HARDWARE_V1,
+    device.INFO_SOFTWARE_V1,
+    device.INFO_CALIBRATION_V1,
+    device.INCIDENT_TEMPERATURE_V1,
+    device.INCIDENT_DROP_V1,
+    device.DIAGNOSTICS_STACK_USAGE_V1,
+]
 
 
-def test_decode_unknown_event_name_raises():
-    with pytest.raises(ValueError):
-        decode("nope.unknown@1", "")
+def test_dispatch_has_all_12_events():
+    assert len(DISPATCH) == 12
+
+
+@pytest.mark.parametrize("name", ALL_EVENT_NAMES)
+def test_dispatch_maps_each_event_to_schema(name):
+    assert name in DISPATCH, f"{name!r} not in DISPATCH"
+    assert isinstance(DISPATCH[name], pl.Schema), f"DISPATCH[{name!r}] is not pl.Schema"
+
+
+def test_dispatch_keys_match_event_name_constants():
+    assert set(DISPATCH.keys()) == set(ALL_EVENT_NAMES)
+
+
+def test_dispatch_info_hardware_schema_has_nested_struct():
+    schema = DISPATCH[device.INFO_HARDWARE_V1]
+    assert isinstance(schema["eeprom_format_version"], pl.Struct)
+
+
+def test_dispatch_diagnostics_stack_usage_schema_has_list_of_struct():
+    schema = DISPATCH[device.DIAGNOSTICS_STACK_USAGE_V1]
+    assert isinstance(schema["threads"], pl.List)

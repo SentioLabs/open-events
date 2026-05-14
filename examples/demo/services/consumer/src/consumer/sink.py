@@ -9,7 +9,7 @@ from typing import Any
 
 import polars as pl
 
-from .schemas import EVENT_SCHEMAS
+from .dispatch import DISPATCH
 
 
 def safe_dir(name: str) -> str:
@@ -44,7 +44,7 @@ class Sink:
             self._buffers[name] = []
 
     def _write(self, event_name: str, rows: list[dict[str, Any]]) -> None:
-        schema = EVENT_SCHEMAS[event_name]
+        schema = DISPATCH[event_name]
         df = pl.DataFrame(rows, schema=schema)
         ts = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
         out = self.output_dir / safe_dir(event_name)
