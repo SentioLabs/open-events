@@ -20,6 +20,11 @@ type LockedEvent struct {
 type LockedField struct {
 	StableID    string
 	ProtoNumber int
+	// Properties and Reserved track nested subfield numbers for object-typed fields.
+	// Absent for non-object fields; treated as "fresh — allocate now" for pre-existing
+	// lockfiles that predate recursive locking (backward-compatible, no version bump).
+	Properties map[string]LockedField
+	Reserved   []ReservedField
 }
 
 type ReservedField struct {

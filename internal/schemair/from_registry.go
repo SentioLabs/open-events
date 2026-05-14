@@ -362,7 +362,7 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 		}
 		usedNumbers[locked.ProtoNumber] = name
 
-		lowered, enum, nestedMsg, err := lowerField(field, locked.ProtoNumber, "events."+key+".properties."+name)
+		lowered, enum, nestedMsg, err := lowerFieldLocked(field, locked, "events."+key+".properties."+name)
 		if err != nil {
 			return Message{}, err
 		}
@@ -524,10 +524,37 @@ func lowerField(field registry.Field, number int, path string) (Field, *Enum, *M
 	return lowered, nil, nil, nil
 }
 
-// lowerObjectToMessage builds a nested Message from an object's sub-properties.
-// Proto numbers are assigned sequentially starting at 1, ordered by sorted field name.
-// Enum sub-fields are collected into the nested message's Enums slice.
-func lowerObjectToMessage(msgName string, properties map[string]registry.Field, path string) (*Message, error) {
+// lowerFieldLocked is like lowerField but uses the full LockedField (including
+// nested Properties for object sub-fields) so nested object subfield numbers
+// come from the lock rather than sorted order.
+func lowerFieldLocked(field registry.Field, locked LockedField, path string) (Field, *Enum, *Message, error) {
+	if field.Type == registry.FieldTypeObject && len(field.Properties) > 0 {
+		nestedMsgName := pascalCase(field.Name)
+		if nestedMsgName == "" {
+			return Field{}, nil, nil, fmt.Errorf("%s: field name %q cannot be rendered as a valid nested message name", path, field.Name)
+		}
+		nestedMsg, err := lowerObjectToMessageLocked(nestedMsgName, field.Properties, locked.Properties, path)
+		if err != nil {
+			return Field{}, nil, nil, err
+		}
+		lowered := Field{
+			Name:        field.Name,
+			Number:      locked.ProtoNumber,
+			Required:    field.Required,
+			Description: field.Description,
+			Type:        TypeRef{Message: nestedMsgName},
+			Optional:    true,
+		}
+		return lowered, nil, nestedMsg, nil
+	}
+	return lowerField(field, locked.ProtoNumber, path)
+}
+
+// lowerObjectToMessageLocked builds a nested Message from an object's sub-properties,
+// reading proto numbers from lockedSubFields when available.
+// If lockedSubFields is nil or a subfield is not in the lock, sequential numbers
+// starting at 1 are used (backward-compatible with pre-existing lockfiles).
+func lowerObjectToMessageLocked(msgName string, properties map[string]registry.Field, lockedSubFields map[string]LockedField, path string) (*Message, error) {
 	names := sortedRegistryFieldNames(properties)
 	msg := &Message{
 		Name:   msgName,
@@ -539,9 +566,26 @@ func lowerObjectToMessage(msgName string, properties map[string]registry.Field, 
 		if err := isValidProtoIdentifier(name); err != nil {
 			return nil, fmt.Errorf("%s.%s: %w", path, name, err)
 		}
-		// Nested object sub-fields use sequential numbers starting at 1.
-		number := i + 1
-		lowered, enum, _, err := lowerField(field, number, path+"."+name)
+		var number int
+		var subLocked LockedField
+		if lockedSubFields != nil {
+			if l, ok := lockedSubFields[name]; ok {
+				number = l.ProtoNumber
+				subLocked = l
+			}
+		}
+		if number == 0 {
+			// Backward compat: no lock entry for this subfield — use sorted order.
+			number = i + 1
+		}
+		var lowered Field
+		var enum *Enum
+		var err error
+		if field.Type == registry.FieldTypeObject && len(field.Properties) > 0 {
+			lowered, enum, _, err = lowerFieldLocked(field, LockedField{ProtoNumber: number, StableID: name, Properties: subLocked.Properties}, path+"."+name)
+		} else {
+			lowered, enum, _, err = lowerField(field, number, path+"."+name)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -551,6 +595,13 @@ func lowerObjectToMessage(msgName string, properties map[string]registry.Field, 
 		}
 	}
 	return msg, nil
+}
+
+// lowerObjectToMessage builds a nested Message from an object's sub-properties.
+// Proto numbers are assigned sequentially starting at 1, ordered by sorted field name.
+// Enum sub-fields are collected into the nested message's Enums slice.
+func lowerObjectToMessage(msgName string, properties map[string]registry.Field, path string) (*Message, error) {
+	return lowerObjectToMessageLocked(msgName, properties, nil, path)
 }
 
 func sortedRegistryFieldNames(fields map[string]registry.Field) []string {

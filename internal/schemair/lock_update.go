@@ -138,13 +138,18 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 		}
 
 		for _, name := range sortedFieldNames(event.Properties) {
+			field := event.Properties[name]
 			if locked, ok := existingEvent.Properties[name]; ok {
+				// Preserve existing assignment, but also recurse into nested objects.
+				locked = updateNestedLock(field, locked)
 				updatedEvent.Properties[name] = locked
 				continue
 			}
 			number := nextSequentialNumber(propertiesMax)
 			propertiesMax = number
-			updatedEvent.Properties[name] = LockedField{StableID: name, ProtoNumber: number}
+			newLocked := LockedField{StableID: name, ProtoNumber: number}
+			newLocked = updateNestedLock(field, newLocked)
+			updatedEvent.Properties[name] = newLocked
 		}
 
 		updatedEvent.Reserved = append(updatedEvent.Reserved, existingEvent.Reserved...)
@@ -169,6 +174,70 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 	}
 
 	return updated, nil
+}
+
+// updateNestedLock recursively updates a LockedField's nested Properties and
+// Reserved to match the registry field's sub-properties (for object-typed fields).
+// Non-object fields are returned with nil Properties and Reserved.
+// For backward compatibility, pre-existing lockfiles with no nested entries are
+// treated as "fresh" and new numbers are allocated.
+func updateNestedLock(regField registry.Field, locked LockedField) LockedField {
+	if regField.Type != registry.FieldTypeObject || len(regField.Properties) == 0 {
+		return locked
+	}
+
+	existingProps := locked.Properties
+	existingReserved := locked.Reserved
+
+	// Compute max number used by existing nested fields (active + reserved).
+	nestedMax := 0
+	for _, l := range existingProps {
+		if l.ProtoNumber > nestedMax {
+			nestedMax = l.ProtoNumber
+		}
+	}
+	for _, r := range existingReserved {
+		if r.ProtoNumber > nestedMax {
+			nestedMax = r.ProtoNumber
+		}
+	}
+
+	updatedProps := make(map[string]LockedField, len(regField.Properties))
+	for _, name := range sortedFieldNames(regField.Properties) {
+		subField := regField.Properties[name]
+		if existingLocked, ok := existingProps[name]; ok {
+			existingLocked = updateNestedLock(subField, existingLocked)
+			updatedProps[name] = existingLocked
+			continue
+		}
+		number := nextSequentialNumber(nestedMax)
+		nestedMax = number
+		newLocked := LockedField{StableID: name, ProtoNumber: number}
+		newLocked = updateNestedLock(subField, newLocked)
+		updatedProps[name] = newLocked
+	}
+
+	// Move removed nested fields to Reserved.
+	nestedReserved := append([]ReservedField(nil), existingReserved...)
+	for _, name := range sortedLockedFieldNames(existingProps) {
+		if _, ok := regField.Properties[name]; ok {
+			continue // still active
+		}
+		existingLocked := existingProps[name]
+		nestedReserved = append(nestedReserved, ReservedField{
+			Name:        name,
+			StableID:    existingLocked.StableID,
+			ProtoNumber: existingLocked.ProtoNumber,
+			Reason:      reservedFieldReasonRemoved,
+		})
+	}
+	sort.Slice(nestedReserved, func(i, j int) bool {
+		return lessReservedField(nestedReserved[i], nestedReserved[j])
+	})
+
+	locked.Properties = updatedProps
+	locked.Reserved = nestedReserved
+	return locked
 }
 
 // copyLockedEvents returns a shallow copy of the events map. This is the
@@ -269,6 +338,10 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			if err := compareLockedField("events."+key+".properties."+name, actual, exp); err != nil {
 				return err
 			}
+			// Recursively check nested object subfields.
+			if err := compareNestedLockedFields("events."+key+".properties."+name, actual, exp); err != nil {
+				return err
+			}
 		}
 		if err := compareReservedFields(key, actualEvent.Reserved, expectedEvent.Reserved); err != nil {
 			return err
@@ -280,6 +353,34 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		}
 	}
 
+	return nil
+}
+
+// compareNestedLockedFields recursively compares the nested Properties and
+// Reserved of two LockedFields (for object-typed properties).
+func compareNestedLockedFields(path string, actual, expected LockedField) error {
+	// If expected has no nested properties, nothing to compare.
+	if len(expected.Properties) == 0 {
+		return nil
+	}
+	for _, name := range sortedLockedFieldNames(expected.Properties) {
+		exp := expected.Properties[name]
+		act, ok := actual.Properties[name]
+		if !ok {
+			return fmt.Errorf("schema lock is stale: %s.%s is missing", path, name)
+		}
+		if err := compareLockedField(path+"."+name, act, exp); err != nil {
+			return err
+		}
+		if err := compareNestedLockedFields(path+"."+name, act, exp); err != nil {
+			return err
+		}
+	}
+	for _, name := range sortedLockedFieldNames(actual.Properties) {
+		if _, ok := expected.Properties[name]; !ok {
+			return fmt.Errorf("schema lock is stale: %s.%s should be reserved", path, name)
+		}
+	}
 	return nil
 }
 

@@ -174,8 +174,10 @@ type lockEventFields struct {
 }
 
 type lockField struct {
-	StableID    string `yaml:"stable_id"`
-	ProtoNumber int    `yaml:"proto_number"`
+	StableID    string                 `yaml:"stable_id"`
+	ProtoNumber int                    `yaml:"proto_number"`
+	Properties  map[string]lockField   `yaml:"properties,omitempty"`
+	Reserved    []lockReservedField    `yaml:"reserved,omitempty"`
 }
 
 type lockReservedField struct {
@@ -183,6 +185,50 @@ type lockReservedField struct {
 	StableID    string `yaml:"stable_id"`
 	ProtoNumber int    `yaml:"proto_number"`
 	Reason      string `yaml:"reason"`
+}
+
+// schemairFieldToLockField converts a schemair.LockedField to its YAML lockField
+// representation, recursing into nested object subfields when present.
+func schemairFieldToLockField(lf schemair.LockedField) lockField {
+	f := lockField{StableID: lf.StableID, ProtoNumber: lf.ProtoNumber}
+	if len(lf.Properties) > 0 {
+		f.Properties = make(map[string]lockField, len(lf.Properties))
+		for name, sub := range lf.Properties {
+			f.Properties[name] = schemairFieldToLockField(sub)
+		}
+	}
+	if len(lf.Reserved) > 0 {
+		f.Reserved = make([]lockReservedField, 0, len(lf.Reserved))
+		for _, rv := range lf.Reserved {
+			f.Reserved = append(f.Reserved, lockReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})
+		}
+		sort.Slice(f.Reserved, func(i, j int) bool {
+			if f.Reserved[i].ProtoNumber != f.Reserved[j].ProtoNumber {
+				return f.Reserved[i].ProtoNumber < f.Reserved[j].ProtoNumber
+			}
+			return f.Reserved[i].Name < f.Reserved[j].Name
+		})
+	}
+	return f
+}
+
+// lockFieldToSchemairField converts a YAML lockField back to schemair.LockedField,
+// recursing into nested object subfields when present.
+func lockFieldToSchemairField(f lockField) schemair.LockedField {
+	lf := schemair.LockedField{StableID: f.StableID, ProtoNumber: f.ProtoNumber}
+	if len(f.Properties) > 0 {
+		lf.Properties = make(map[string]schemair.LockedField, len(f.Properties))
+		for name, sub := range f.Properties {
+			lf.Properties[name] = lockFieldToSchemairField(sub)
+		}
+	}
+	if len(f.Reserved) > 0 {
+		lf.Reserved = make([]schemair.ReservedField, 0, len(f.Reserved))
+		for _, rv := range f.Reserved {
+			lf.Reserved = append(lf.Reserved, schemair.ReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})
+		}
+	}
+	return lf
 }
 
 func newLockFile(lock schemair.Lock) lockFile {
@@ -194,7 +240,7 @@ func newLockFile(lock schemair.Lock) lockFile {
 	for domainName, domain := range lock.Domains {
 		ctx := make(map[string]lockField, len(domain.Context))
 		for fieldName, locked := range domain.Context {
-			ctx[fieldName] = lockField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
+			ctx[fieldName] = schemairFieldToLockField(locked)
 		}
 		domainEntry := lockDomainFields{Context: ctx}
 		if len(domain.Reserved) > 0 {
@@ -219,10 +265,10 @@ func newLockFile(lock schemair.Lock) lockFile {
 			Reserved:   make([]lockReservedField, 0, len(v.Reserved)),
 		}
 		for fk, fv := range v.Envelope {
-			item.Envelope[fk] = lockField{StableID: fv.StableID, ProtoNumber: fv.ProtoNumber}
+			item.Envelope[fk] = schemairFieldToLockField(fv)
 		}
 		for fk, fv := range v.Properties {
-			item.Properties[fk] = lockField{StableID: fv.StableID, ProtoNumber: fv.ProtoNumber}
+			item.Properties[fk] = schemairFieldToLockField(fv)
 		}
 		for _, rv := range v.Reserved {
 			item.Reserved = append(item.Reserved, lockReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})
@@ -247,7 +293,7 @@ func (f lockFile) toSchemaLock() schemair.Lock {
 	for domainName, domain := range f.Domains {
 		ctx := make(map[string]schemair.LockedField, len(domain.Context))
 		for fieldName, locked := range domain.Context {
-			ctx[fieldName] = schemair.LockedField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
+			ctx[fieldName] = lockFieldToSchemairField(locked)
 		}
 		reserved := make([]schemair.ReservedField, 0, len(domain.Reserved))
 		for _, rv := range domain.Reserved {
@@ -262,10 +308,10 @@ func (f lockFile) toSchemaLock() schemair.Lock {
 			Reserved:   make([]schemair.ReservedField, 0, len(v.Reserved)),
 		}
 		for fk, fv := range v.Envelope {
-			event.Envelope[fk] = schemair.LockedField{StableID: fv.StableID, ProtoNumber: fv.ProtoNumber}
+			event.Envelope[fk] = lockFieldToSchemairField(fv)
 		}
 		for fk, fv := range v.Properties {
-			event.Properties[fk] = schemair.LockedField{StableID: fv.StableID, ProtoNumber: fv.ProtoNumber}
+			event.Properties[fk] = lockFieldToSchemairField(fv)
 		}
 		for _, rv := range v.Reserved {
 			event.Reserved = append(event.Reserved, schemair.ReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})

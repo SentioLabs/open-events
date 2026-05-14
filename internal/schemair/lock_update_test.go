@@ -1528,6 +1528,160 @@ func TestContextFieldTombstone_NewFieldDoesNotReuseRemovedNumber(t *testing.T) {
 	}
 }
 
+// TestNestedObjectFieldLocking verifies that nested object subfields get stable
+// proto numbers across two UpdateLock calls and CheckLock does not report drift.
+func TestNestedObjectFieldLocking_StableAcrossUpdates(t *testing.T) {
+	versionField := registry.Field{
+		Name: "version",
+		Type: registry.FieldTypeObject,
+		Properties: map[string]registry.Field{
+			"major": {Name: "major", Type: registry.FieldTypeInteger},
+			"minor": {Name: "minor", Type: registry.FieldTypeInteger},
+		},
+	}
+	event := registry.Event{
+		Name:    "device.info.hardware",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"serial": {Name: "serial", Type: registry.FieldTypeString},
+			"version": versionField,
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock1, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v1 error = %v", err)
+	}
+
+	key := eventKey(event)
+	versionLocked := lock1.Events[key].Properties["version"]
+	if versionLocked.Properties == nil {
+		t.Fatal("nested object 'version' has no Properties in lock")
+	}
+	majorNum := versionLocked.Properties["major"].ProtoNumber
+	minorNum := versionLocked.Properties["minor"].ProtoNumber
+	if majorNum < 1 || minorNum < 1 || majorNum == minorNum {
+		t.Fatalf("nested field numbers invalid: major=%d minor=%d", majorNum, minorNum)
+	}
+
+	// Second UpdateLock must preserve the nested numbers.
+	lock2, err := UpdateLock(lock1, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v2 error = %v", err)
+	}
+
+	versionLocked2 := lock2.Events[key].Properties["version"]
+	if versionLocked2.Properties["major"].ProtoNumber != majorNum {
+		t.Fatalf("major ProtoNumber changed from %d to %d", majorNum, versionLocked2.Properties["major"].ProtoNumber)
+	}
+	if versionLocked2.Properties["minor"].ProtoNumber != minorNum {
+		t.Fatalf("minor ProtoNumber changed from %d to %d", minorNum, versionLocked2.Properties["minor"].ProtoNumber)
+	}
+
+	// CheckLock must accept the stable lock.
+	if err := CheckLock(lock2, reg); err != nil {
+		t.Fatalf("CheckLock() error = %v, want nil", err)
+	}
+}
+
+func TestNestedObjectFieldLocking_RemovedNestedFieldGoesToReserved(t *testing.T) {
+	event := registry.Event{
+		Name:    "device.info.hardware",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"version": {
+				Name: "version",
+				Type: registry.FieldTypeObject,
+				Properties: map[string]registry.Field{
+					"major": {Name: "major", Type: registry.FieldTypeInteger},
+					"minor": {Name: "minor", Type: registry.FieldTypeInteger},
+					"patch": {Name: "patch", Type: registry.FieldTypeInteger},
+				},
+			},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock1, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v1 error = %v", err)
+	}
+
+	key := eventKey(event)
+	patchNum := lock1.Events[key].Properties["version"].Properties["patch"].ProtoNumber
+
+	// Remove patch from the nested object.
+	event.Properties["version"] = registry.Field{
+		Name: "version",
+		Type: registry.FieldTypeObject,
+		Properties: map[string]registry.Field{
+			"major": {Name: "major", Type: registry.FieldTypeInteger},
+			"minor": {Name: "minor", Type: registry.FieldTypeInteger},
+		},
+	}
+	reg.Events = []registry.Event{event}
+
+	lock2, err := UpdateLock(lock1, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v2 error = %v", err)
+	}
+
+	versionLocked := lock2.Events[key].Properties["version"]
+	if _, ok := versionLocked.Properties["patch"]; ok {
+		t.Fatal("patch still in active nested Properties after removal; should be in nested Reserved")
+	}
+	if len(versionLocked.Reserved) != 1 || versionLocked.Reserved[0].Name != "patch" {
+		t.Fatalf("nested Reserved = %#v, want one entry for patch", versionLocked.Reserved)
+	}
+	if versionLocked.Reserved[0].ProtoNumber != patchNum {
+		t.Fatalf("nested Reserved[0].ProtoNumber = %d, want %d", versionLocked.Reserved[0].ProtoNumber, patchNum)
+	}
+}
+
+func TestNestedObjectFieldLocking_CheckLockDetectsDrift(t *testing.T) {
+	event := registry.Event{
+		Name:    "device.info.hardware",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"version": {
+				Name: "version",
+				Type: registry.FieldTypeObject,
+				Properties: map[string]registry.Field{
+					"major": {Name: "major", Type: registry.FieldTypeInteger},
+					"minor": {Name: "minor", Type: registry.FieldTypeInteger},
+				},
+			},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	// Add a new nested field to the registry but don't update the lock.
+	event.Properties["version"] = registry.Field{
+		Name: "version",
+		Type: registry.FieldTypeObject,
+		Properties: map[string]registry.Field{
+			"major": {Name: "major", Type: registry.FieldTypeInteger},
+			"minor": {Name: "minor", Type: registry.FieldTypeInteger},
+			"patch": {Name: "patch", Type: registry.FieldTypeInteger},
+		},
+	}
+	reg.Events = []registry.Event{event}
+
+	err = CheckLock(lock, reg)
+	if err == nil {
+		t.Fatal("CheckLock() error = nil, want stale error for new nested field")
+	}
+	if !strings.Contains(err.Error(), "patch") && !strings.Contains(err.Error(), "stale") {
+		t.Fatalf("CheckLock() error = %q, want stale/patch mention", err)
+	}
+}
+
 func lockWithReservedPropertyForTest(t *testing.T) (Lock, registry.Registry, string) {
 	t.Helper()
 
