@@ -6,7 +6,6 @@ type Registry struct {
 	Version   string
 	Namespace string
 	Package   PackageConfig
-	Defaults  Defaults
 	Owners    []Owner
 	Context   map[string]Field
 	Events    []Event
@@ -19,25 +18,10 @@ type PackageConfig struct {
 	Python string
 }
 
-type Defaults struct {
-	Queue     string
-	Snowflake SnowflakeDefaults
-}
-
-type SnowflakeDefaults struct {
-	Database string
-	Schema   string
-}
-
 type Owner struct {
 	Team  string
 	Slack string
 	Email string
-}
-
-type Destination struct {
-	Queue          string
-	SnowflakeTable string
 }
 
 type Event struct {
@@ -48,7 +32,6 @@ type Event struct {
 	Owner       string
 	Producer    string
 	Sources     []string
-	Destination Destination
 	Properties  map[string]Field
 	Domain      string   // first path segment
 	Path        []string // full path from registry root, excluding action filename

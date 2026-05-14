@@ -6,14 +6,12 @@ func TestRegistryModelContracts(t *testing.T) {
 	var _ string = Registry{}.Version
 	var _ string = Registry{}.Namespace
 	var _ PackageConfig = Registry{}.Package
-	var _ Defaults = Registry{}.Defaults
 	var _ []Owner = Registry{}.Owners
 	var _ map[string]Field = Registry{}.Context
 	var _ []Event = Registry{}.Events
 
 	var _ string = Event{}.Name
 	var _ int = Event{}.Version
-	var _ Destination = Event{}.Destination
 	var _ map[string]Field = Event{}.Properties
 
 	var _ string = Field{}.Name

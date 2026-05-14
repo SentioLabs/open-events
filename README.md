@@ -25,13 +25,13 @@ It does not implement an event broker, hosted governance UI, runtime analytics d
 The first milestone provides the compiler front-end and `validate` command.
 
 ```bash
-go run ./cmd/openevents validate ./examples/basic
+go run ./cmd/openevents validate ./examples/demo/registry
 ```
 
 Expected output:
 
 ```text
-ok: registry valid (2 events, 3 context fields)
+ok: registry valid (12 events, 4 context fields)
 ```
 
 ## Demo
@@ -97,17 +97,6 @@ Run all tests:
 ```bash
 go test ./...
 ```
-
-## Example registry
-
-See `examples/basic/openevents.yaml` for a minimal registry with:
-
-- shared context fields
-- owners
-- destinations
-- `user.signed_up` event
-- `search.query_submitted` event
-- field-level PII classifications
 
 ## Roadmap
 
