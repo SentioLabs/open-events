@@ -13,8 +13,9 @@ import (
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/user"
 )
 
-func int64p(v int64) *int64 { return &v }
-func boolp(v bool) *bool    { return &v }
+func int64p(v int64) *int64    { return &v }
+func boolp(v bool) *bool       { return &v }
+func stringp(v string) *string { return &v }
 
 func validUserContext() user.UserContext {
 	return user.UserContext{
@@ -194,7 +195,7 @@ func TestCartCheckout_Validate_RejectsMissingCartID(t *testing.T) {
 func TestCartCheckout_Validate_RejectsBadCurrency(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-1",
+		CartID:        stringp("cart-1"),
 		ItemCount:     int64p(1),
 		SubtotalCents: int64p(100),
 		Currency:      "BTC",
@@ -208,7 +209,7 @@ func TestCartCheckout_Validate_RejectsBadCurrency(t *testing.T) {
 func TestCartCheckout_Validate_RejectsMissingItemCount(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-1",
+		CartID:        stringp("cart-1"),
 		SubtotalCents: int64p(100),
 		Currency:      "USD",
 	}
@@ -221,7 +222,7 @@ func TestCartCheckout_Validate_RejectsMissingItemCount(t *testing.T) {
 func TestCartCheckout_Validate_RejectsMissingSubtotalCents(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:   validUserContext(),
-		CartID:    "cart-1",
+		CartID:    stringp("cart-1"),
 		ItemCount: int64p(1),
 		Currency:  "USD",
 	}
@@ -234,7 +235,7 @@ func TestCartCheckout_Validate_RejectsMissingSubtotalCents(t *testing.T) {
 func TestCartCheckout_ToProto_RoundTrip(t *testing.T) {
 	req := user.CartCheckoutRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-42",
+		CartID:        stringp("cart-42"),
 		ItemCount:     int64p(7),
 		SubtotalCents: int64p(1999),
 		Currency:      "GBP",

@@ -12,11 +12,13 @@ import (
 )
 
 // CartCheckoutRequest is the JSON body for POST /v1/events/user/cart/checkout.
+// Required primitive fields use pointer types so the validator can distinguish
+// "field omitted from JSON" from "field set to its zero value".
 type CartCheckoutRequest struct {
 	Context       UserContext `json:"context"`
-	CartID        string      `json:"cart_id"`
-	ItemCount     *int64      `json:"item_count"`     // required; pointer distinguishes 0 from omitted
-	SubtotalCents *int64      `json:"subtotal_cents"` // required; pointer distinguishes 0 from omitted
+	CartID        *string     `json:"cart_id"`        // required
+	ItemCount     *int64      `json:"item_count"`     // required
+	SubtotalCents *int64      `json:"subtotal_cents"` // required
 	Currency      string      `json:"currency"`       // "USD"|"EUR"|"GBP"
 }
 
@@ -29,7 +31,7 @@ var checkoutCurrencyByName = map[string]userpb.UserCartCheckoutV1Properties_Curr
 // Validate returns field-level errors for the request, empty on success.
 func (r CartCheckoutRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
-	if r.CartID == "" {
+	if r.CartID == nil {
 		errs = append(errs, eventmap.FieldError{Field: "cart_id", Message: "required"})
 	}
 	if r.ItemCount == nil {
@@ -54,7 +56,7 @@ func (r CartCheckoutRequest) ToProto() eventmap.EnvelopeMessage {
 		Client:       &commonpb.Client{Name: proto.String(eventmap.ClientName), Version: proto.String(eventmap.ClientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &userpb.UserCartCheckoutV1Properties{
-			CartId:        proto.String(r.CartID),
+			CartId:        proto.String(*r.CartID),
 			ItemCount:     proto.Int64(*r.ItemCount),
 			SubtotalCents: proto.Int64(*r.SubtotalCents),
 			Currency:      checkoutCurrencyByName[r.Currency].Enum(),

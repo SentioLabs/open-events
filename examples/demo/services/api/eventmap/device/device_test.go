@@ -26,14 +26,16 @@ func containsField(errs []eventmap.FieldError, field string) bool {
 
 func float64p(v float64) *float64 { return &v }
 func int64p(v int64) *int64       { return &v }
+func stringp(v string) *string    { return &v }
 
 // --- InfoHardware ---
 
 func TestInfoHardware_Validate_RejectsMissingDeviceID(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:    device.DeviceContext{TenantId: "t"},
-		UniqueID:   "uid",
-		SensorType: "co",
+		Context:         device.DeviceContext{TenantId: "t"},
+		UniqueID:        stringp("uid"),
+		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
+		SensorType:      "co",
 	}
 	errs := req.Validate()
 	if !containsField(errs, "context.device_id") {
@@ -43,9 +45,10 @@ func TestInfoHardware_Validate_RejectsMissingDeviceID(t *testing.T) {
 
 func TestInfoHardware_Validate_RejectsBadSensorType(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:    validDeviceContext(),
-		UniqueID:   "uid",
-		SensorType: "invalid",
+		Context:         validDeviceContext(),
+		UniqueID:        stringp("uid"),
+		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
+		SensorType:      "invalid",
 	}
 	errs := req.Validate()
 	if !containsField(errs, "sensor_type") {
@@ -53,11 +56,57 @@ func TestInfoHardware_Validate_RejectsBadSensorType(t *testing.T) {
 	}
 }
 
+// TestInfoHardware_Validate_RejectsMissingUniqueID guards against the slop-review
+// M-2 regression: required string fields that used zero-value `== ""` checks
+// would silently accept `{}` POSTs.
+func TestInfoHardware_Validate_RejectsMissingUniqueID(t *testing.T) {
+	req := device.InfoHardwareRequest{
+		Context:         validDeviceContext(),
+		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
+		SensorType:      "co",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "unique_id") {
+		t.Fatalf("expected unique_id error, got %+v", errs)
+	}
+}
+
+// TestInfoHardware_Validate_RejectsMissingManufacturingTs guards against the
+// slop-review M-3 regression: the registry marks manufacturing_timestamp as
+// required, but the old handler silently no-op-ed when it was missing.
+func TestInfoHardware_Validate_RejectsMissingManufacturingTs(t *testing.T) {
+	req := device.InfoHardwareRequest{
+		Context:    validDeviceContext(),
+		UniqueID:   stringp("abc123"),
+		SensorType: "co",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "manufacturing_timestamp") {
+		t.Fatalf("expected manufacturing_timestamp error, got %+v", errs)
+	}
+}
+
+// TestInfoHardware_Validate_RejectsUnparseableManufacturingTs guards against
+// the slop-review M-3 regression: the old handler swallowed time.Parse errors
+// silently, so a bad timestamp would publish an envelope with no proto field.
+func TestInfoHardware_Validate_RejectsUnparseableManufacturingTs(t *testing.T) {
+	req := device.InfoHardwareRequest{
+		Context:         validDeviceContext(),
+		UniqueID:        stringp("abc123"),
+		ManufacturingTs: stringp("not-a-timestamp"),
+		SensorType:      "co",
+	}
+	errs := req.Validate()
+	if !containsField(errs, "manufacturing_timestamp") {
+		t.Fatalf("expected manufacturing_timestamp error, got %+v", errs)
+	}
+}
+
 func TestInfoHardware_ToProto_RoundTrip(t *testing.T) {
 	req := device.InfoHardwareRequest{
 		Context:             validDeviceContext(),
-		UniqueID:            "abc123",
-		ManufacturingTs:     "2024-01-01T00:00:00Z", // RFC3339 string
+		UniqueID:            stringp("abc123"),
+		ManufacturingTs:     stringp("2024-01-01T00:00:00Z"),
 		SensorType:          "oxygen",
 		EepromFormatVersion: device.EepromFormatVersionRequest{Major: 1, Minor: 0},
 		ModulePcbVersion:    device.ModulePcbVersionRequest{Major: 2, Minor: 1},

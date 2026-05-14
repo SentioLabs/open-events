@@ -26,10 +26,12 @@ type ModulePcbVersionRequest struct {
 }
 
 // InfoHardwareRequest is the JSON body for POST /v1/events/device/info/hardware.
+// Required primitive fields use pointer types so the validator can distinguish
+// "field omitted from JSON" from "field set to its zero value".
 type InfoHardwareRequest struct {
 	Context             DeviceContext              `json:"context"`
-	UniqueID            string                     `json:"unique_id"`
-	ManufacturingTs     string                     `json:"manufacturing_timestamp"` // RFC3339 timestamp string
+	UniqueID            *string                    `json:"unique_id"`              // required
+	ManufacturingTs     *string                    `json:"manufacturing_timestamp"` // required; RFC3339
 	EepromFormatVersion EepromFormatVersionRequest `json:"eeprom_format_version"`
 	ModulePcbVersion    ModulePcbVersionRequest    `json:"module_pcb_version"`
 	SensorType          string                     `json:"sensor_type"` // "co"|"alcohol"|"oxygen"|"fuel_cell"
@@ -48,8 +50,13 @@ var sensorTypeByName = map[string]devicepb.DeviceInfoHardwareV1Properties_Sensor
 // Validate returns field-level errors for the request, empty on success.
 func (r InfoHardwareRequest) Validate() []eventmap.FieldError {
 	errs := validateContext(r.Context)
-	if r.UniqueID == "" {
+	if r.UniqueID == nil {
 		errs = append(errs, eventmap.FieldError{Field: "unique_id", Message: "required"})
+	}
+	if r.ManufacturingTs == nil {
+		errs = append(errs, eventmap.FieldError{Field: "manufacturing_timestamp", Message: "required"})
+	} else if _, err := time.Parse(time.RFC3339, *r.ManufacturingTs); err != nil {
+		errs = append(errs, eventmap.FieldError{Field: "manufacturing_timestamp", Message: "must be RFC3339 timestamp"})
 	}
 	if _, ok := sensorTypeByName[r.SensorType]; !ok {
 		errs = append(errs, eventmap.FieldError{Field: "sensor_type", Message: "must be one of unspecified|co|alcohol|oxygen|fuel_cell"})
@@ -57,11 +64,16 @@ func (r InfoHardwareRequest) Validate() []eventmap.FieldError {
 	return errs
 }
 
-// ToProto builds a DeviceInfoHardwareV1 protobuf with a fresh envelope.
+// ToProto builds a DeviceInfoHardwareV1 protobuf with a fresh envelope. Callers
+// must invoke Validate() first; ToProto assumes required fields are set.
 func (r InfoHardwareRequest) ToProto() eventmap.EnvelopeMessage {
+	// time.Parse here is safe: Validate ensured the timestamp is non-nil
+	// and parseable; we discard the error deliberately.
+	t, _ := time.Parse(time.RFC3339, *r.ManufacturingTs)
 	props := &devicepb.DeviceInfoHardwareV1Properties{
-		UniqueId:   proto.String(r.UniqueID),
-		SensorType: sensorTypeByName[r.SensorType].Enum(),
+		UniqueId:               proto.String(*r.UniqueID),
+		ManufacturingTimestamp: timestamppb.New(t),
+		SensorType:             sensorTypeByName[r.SensorType].Enum(),
 		EepromFormatVersion: &devicepb.DeviceInfoHardwareV1Properties_EepromFormatVersion{
 			Major: proto.Int64(r.EepromFormatVersion.Major),
 			Minor: proto.Int64(r.EepromFormatVersion.Minor),
@@ -70,11 +82,6 @@ func (r InfoHardwareRequest) ToProto() eventmap.EnvelopeMessage {
 			Major: proto.Int64(r.ModulePcbVersion.Major),
 			Minor: proto.Int64(r.ModulePcbVersion.Minor),
 		},
-	}
-	if r.ManufacturingTs != "" {
-		if t, err := time.Parse(time.RFC3339, r.ManufacturingTs); err == nil {
-			props.ManufacturingTimestamp = timestamppb.New(t)
-		}
 	}
 	if r.FuelCellLotNumber != "" {
 		props.FuelCellLotNumber = proto.String(r.FuelCellLotNumber)
