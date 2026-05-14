@@ -1,4 +1,7 @@
 // Package testfx provides a fluent builder for synthetic registry trees used in tests.
+// The output targets the directory-form loader landing in T1 (root openevents.yaml
+// plus per-domain domain.yml plus per-action <action>.yml files); it is not
+// compatible with the legacy single-file form.
 package testfx
 
 import (
@@ -77,7 +80,7 @@ func (b *Builder) Write(t *testing.T) string {
 		Languages []string `yaml:"languages,omitempty"`
 	}
 	type rootYAML struct {
-		Version   string       `yaml:"version"`
+		Version   string       `yaml:"openevents"`
 		Namespace string       `yaml:"namespace,omitempty"`
 		Package   packageYAML  `yaml:"package,omitempty"`
 		Owners    []ownerEntry `yaml:"owners,omitempty"`
@@ -248,5 +251,8 @@ func writeYAML(t *testing.T, path string, v any) {
 	enc.SetIndent(2)
 	if err := enc.Encode(v); err != nil {
 		t.Fatalf("encode %s: %v", path, err)
+	}
+	if err := enc.Close(); err != nil {
+		t.Fatalf("close encoder %s: %v", path, err)
 	}
 }

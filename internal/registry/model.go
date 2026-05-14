@@ -10,8 +10,8 @@ type Registry struct {
 	Owners    []Owner
 	Context   map[string]Field
 	Events    []Event
-	Domains   map[string]Domain // NEW
-	Codegen   Codegen           // NEW
+	Domains   map[string]Domain
+	Codegen   Codegen
 }
 
 type PackageConfig struct {
@@ -50,8 +50,8 @@ type Event struct {
 	Sources     []string
 	Destination Destination
 	Properties  map[string]Field
-	Domain      string   // NEW: first path segment
-	Path        []string // NEW: full path from registry root, excluding action filename
+	Domain      string   // first path segment
+	Path        []string // full path from registry root, excluding action filename
 }
 
 type Field struct {
