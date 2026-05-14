@@ -410,6 +410,133 @@ func TestValidate_DomainContextInvalidField(t *testing.T) {
 	}
 }
 
+// --- Version / Status / Action-name regression tests (CODEX-3) ---
+
+func TestValidate_ZeroVersion(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 0, // invalid: must be positive
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for version 0, got none")
+	}
+	if !containsDiag(diags, "version", "positive") {
+		t.Fatalf("expected diagnostic about positive version; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_NegativeVersion(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: -1, // invalid: must be positive
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for negative version, got none")
+	}
+	if !containsDiag(diags, "version", "positive") {
+		t.Fatalf("expected diagnostic about positive version; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_UnsupportedStatus(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "retired", // invalid status
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for unsupported status, got none")
+	}
+	if !containsDiag(diags, "status", "retired") {
+		t.Fatalf("expected diagnostic mentioning 'retired' status; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_NonSnakeCaseActionFilename(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "SignUp"). // non-snake_case action name
+		Version(1).Status("active").Description("user signed up").Done().
+		Done().
+		Write(t)
+
+	reg := loadOrFatal(t, root)
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for non-snake_case action filename, got none")
+	}
+	if !containsDiag(diags, "", "snake_case") && !containsDiag(diags, "", "action") {
+		t.Fatalf("expected diagnostic about snake_case action; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_ValidStatuses(t *testing.T) {
+	for _, status := range []string{"active", "deprecated", "experimental"} {
+		t.Run(status, func(t *testing.T) {
+			reg := registry.Registry{
+				Owners: []registry.Owner{{Team: "growth"}},
+				Domains: map[string]registry.Domain{
+					"user": {Name: "user", Owner: "growth"},
+				},
+				Events: []registry.Event{
+					{
+						Name:    "user.auth.signup",
+						Version: 1,
+						Status:  status,
+						Domain:  "user",
+						Path:    []string{"user", "auth"},
+					},
+				},
+			}
+			diags := registry.Validate(reg)
+			if diags.HasErrors() {
+				t.Fatalf("status %q should be valid but got: %v", status, diags.Error())
+			}
+		})
+	}
+}
+
 // --- helpers ---
 
 // containsDiag returns true if any diagnostic matches both location (substring) and message (substring).

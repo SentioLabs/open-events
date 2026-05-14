@@ -132,6 +132,32 @@ func validateEvent(event Event, ownerSlugs map[string]struct{}, seen map[string]
 		})
 	}
 
+	// Structural: version must be positive.
+	if event.Version <= 0 {
+		*diags = append(*diags, Diagnostic{
+			Location: filePath + ":version",
+			Message:  "event version must be positive",
+		})
+	}
+
+	// Structural: status must be a supported value.
+	if !isSupportedStatus(event.Status) {
+		*diags = append(*diags, Diagnostic{
+			Location: filePath + ":status",
+			Message:  fmt.Sprintf("unsupported event status %q (must be active, deprecated, or experimental)", event.Status),
+		})
+	}
+
+	// Structural: action segment (last name part derived from filename) must be snake_case.
+	nameParts := strings.Split(event.Name, ".")
+	action := nameParts[len(nameParts)-1]
+	if !snakeCasePattern.MatchString(action) {
+		*diags = append(*diags, Diagnostic{
+			Location: filePath + ":name",
+			Message:  fmt.Sprintf("action segment %q must be snake_case (^[a-z][a-z0-9_]*$)", action),
+		})
+	}
+
 	// Referential: event-level owner (optional).
 	if event.Owner != "" {
 		if _, ok := ownerSlugs[event.Owner]; !ok {
@@ -222,6 +248,15 @@ func validateEnum(location string, values []string, diags *Diagnostics) {
 			continue
 		}
 		seen[value] = struct{}{}
+	}
+}
+
+func isSupportedStatus(status string) bool {
+	switch status {
+	case "active", "deprecated", "experimental":
+		return true
+	default:
+		return false
 	}
 }
 
