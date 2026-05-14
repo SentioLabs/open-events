@@ -21,17 +21,22 @@ PY_GEN_DIR="$GEN_DIR/python"
 # ---------------------------------------------------------------------------
 PROTO_BASE="$GO_GEN_DIR/com/acme/platform"
 
-for domain in common user device; do
-  SRC_DIR="$PROTO_BASE/$domain/v1"
+if [[ ! -d "$PROTO_BASE" ]]; then
+  echo "postgen: $PROTO_BASE not found; run buf generate first" >&2
+  exit 1
+fi
+
+# Iterate over every domain that buf actually emitted under $PROTO_BASE/<domain>/v1.
+# Hardcoding the domain list here would silently skip new domains added to the registry.
+shopt -s nullglob
+for domain_path in "$PROTO_BASE"/*/v1; do
+  domain="$(basename "$(dirname "$domain_path")")"
   DST_DIR="$API_EVENTMAP_DIR/pb/$domain"
-  if [[ -d "$SRC_DIR" ]]; then
-    mkdir -p "$DST_DIR"
-    cp "$SRC_DIR"/*.pb.go "$DST_DIR/"
-    echo "postgen: copied $domain proto Go files to $DST_DIR"
-  else
-    echo "postgen: warning: $SRC_DIR not found; skipping $domain pb.go copy" >&2
-  fi
+  mkdir -p "$DST_DIR"
+  cp "$domain_path"/*.pb.go "$DST_DIR/"
+  echo "postgen: copied $domain proto Go files to $DST_DIR"
 done
+shopt -u nullglob
 
 # ---------------------------------------------------------------------------
 # 2. Turn gen/python into an installable Python package.

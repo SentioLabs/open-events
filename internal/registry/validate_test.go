@@ -410,6 +410,40 @@ func TestValidate_DomainContextInvalidField(t *testing.T) {
 	}
 }
 
+// --- Domain-name keyword rejection (slop-review D-2) ---
+
+func TestValidate_RejectsGoKeywordDomainName(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"func": {Name: "func", Owner: "growth"},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for Go-keyword domain name, got none")
+	}
+	if !containsDiag(diags, "func/domain.yml", "Go keyword") {
+		t.Fatalf("expected diagnostic about Go keyword; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_RejectsPythonKeywordDomainName(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"class": {Name: "class", Owner: "growth"},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for Python-keyword domain name, got none")
+	}
+	if !containsDiag(diags, "class/domain.yml", "Python keyword") {
+		t.Fatalf("expected diagnostic about Python keyword; got: %v", diags.Error())
+	}
+}
+
 // --- Version / Status / Action-name regression tests (CODEX-3) ---
 
 func TestValidate_ZeroVersion(t *testing.T) {

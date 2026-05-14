@@ -14,6 +14,19 @@ var (
 	pythonPackagePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$`)
 )
 
+// pythonKeywords lists Python 3.11+ reserved words that would collide with a
+// domain name used as a module identifier (e.g. `from acme.events.class import ...`
+// is a syntax error). The list mirrors Python's `keyword.kwlist`.
+var pythonKeywords = map[string]struct{}{
+	"False": {}, "None": {}, "True": {}, "and": {}, "as": {}, "assert": {},
+	"async": {}, "await": {}, "break": {}, "class": {}, "continue": {},
+	"def": {}, "del": {}, "elif": {}, "else": {}, "except": {}, "finally": {},
+	"for": {}, "from": {}, "global": {}, "if": {}, "import": {}, "in": {},
+	"is": {}, "lambda": {}, "nonlocal": {}, "not": {}, "or": {}, "pass": {},
+	"raise": {}, "return": {}, "try": {}, "while": {}, "with": {}, "yield": {},
+	"match": {}, "case": {}, // soft keywords as of 3.10+
+}
+
 // Validate checks the registry for structural, referential, uniqueness, and
 // field-level errors. It expects reg to have been produced by Load.
 func Validate(reg Registry) Diagnostics {
@@ -85,8 +98,23 @@ func validatePackages(pkg PackageConfig, diags *Diagnostics) {
 }
 
 // validateDomain checks referential owner and domain-level context fields.
+// The domain name itself is also checked against Go and Python keyword lists
+// because the per-domain codegen uses it directly as a Go package and Python
+// module identifier.
 func validateDomain(domainName string, domain Domain, ownerSlugs map[string]struct{}, diags *Diagnostics) {
 	domainFile := domainName + "/domain.yml"
+	if token.Lookup(domainName).IsKeyword() {
+		*diags = append(*diags, Diagnostic{
+			Location: domainFile,
+			Message:  fmt.Sprintf("domain name %q is a Go keyword and would produce uncompilable Go bindings", domainName),
+		})
+	}
+	if _, ok := pythonKeywords[domainName]; ok {
+		*diags = append(*diags, Diagnostic{
+			Location: domainFile,
+			Message:  fmt.Sprintf("domain name %q is a Python keyword and would produce unimportable Python modules", domainName),
+		})
+	}
 	if domain.Owner != "" {
 		if _, ok := ownerSlugs[domain.Owner]; !ok {
 			*diags = append(*diags, Diagnostic{

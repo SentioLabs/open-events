@@ -75,73 +75,71 @@ The `namespace` is the proto package and the prefix everything generated derives
 
 ### Domain metadata
 
-Each domain directory has a `domain.yml`:
+Each domain directory has a `domain.yml`. The domain name itself is the
+directory name (`registry/user/`), so it does not appear as a field. The
+file declares the domain's description, owner, and the context fields
+shared by every event in that domain:
 
 ```yaml
 # registry/user/domain.yml
-domain: user
-description: User lifecycle and shopping events
+description: "Events emitted by end users via web/mobile apps."
 owner: growth
+context:
+  fields:
+    - name: tenant_id
+      type: string
+      required: true
+      pii: none
+    - name: user_id
+      type: string
+      required: false
+      pii: pseudonymous
+    - name: session_id
+      type: string
+      required: false
+      pii: pseudonymous
+    - name: platform
+      type: enum
+      values: [ios, android, web]
+      required: true
+      pii: none
 ```
 
-Domain metadata is optional but helps organize multi-team registries.
+PII tags are first-class: `personal`, `pseudonymous`, `sensitive`, or `none`.
+Downstream tooling can use them for masking, retention policies, or access
+control. Defining context once at the domain level means every event in the
+domain gets the right tenant/user/session/platform fields for free, and a
+warehouse query like "events from the iOS app this week" doesn't need a
+per-event `JOIN`.
 
 ### Event definitions
 
-Each event lives in its own file under `<domain>/<action>/<action>.yml`:
+Each event lives in its own file under `<domain>/<category>/<action>.yml`.
+The file path encodes the composed name: `user/auth/signup.yml` becomes
+`user.auth.signup@1`. The event file declares the event-specific properties;
+context fields are inherited from `<domain>/domain.yml`:
 
 ```yaml
 # registry/user/auth/signup.yml
-event: user.auth.signup
 version: 1
 status: active
-owner: growth
+description: "User completed account signup."
 producer: storefront-api
-destination:
-  queue: storefront-events
-  snowflake_table: fact_user_signup
-context:
-  - tenant_id
-  - user_id
-  - session_id
-  - platform
+sources: [ios, android, web]
 properties:
-  method:
+  - name: method
     type: enum
-    values: [email, sso, phone]
-    required: true
-  plan:
-    type: string
-    required: true
-```
-
-The file path encodes the domain and action hierarchy: `user/auth/signup.yml` becomes the event `user.auth.signup@1`. An event has a version, owner, producer, destinations (queue, warehouse table), required context fields, and a property bag.
-
-### Context fields
-
-Context fields are shared across all events (defined in the root file or inherited):
-
-```yaml
-context:
-  tenant_id:
-    type: string
+    values: [email, google, apple]
     required: true
     pii: none
-  user_id:
+  - name: plan
     type: string
-    required: true
-    pii: personal
-  session_id:
-    type: string
-    pii: none
-  platform:
-    type: enum
-    values: [ios, android, web, backend]
-    required: true
+    required: false
     pii: none
 ```
 
-Defining context once means every event gets the right tenant/user/session/platform fields for free, and a warehouse query like "events from the iOS app this week" doesn't need a per-event `JOIN`. PII tags are first-class: `personal`, `pseudonymous`, `sensitive`, or `none`. Downstream tooling can use them for masking, retention policies, or access control.
+Supported `status` values are `active`, `deprecated`, and `removed`. The
+`sources` list is informational; the wire format does not depend on it.
 
 ## The lock file
 
@@ -482,8 +480,9 @@ left as exercises:
 - **Schema evolution**: the lock file pins compatibility, but the demo doesn't
   walk through a versioned migration (`checkout.started@1` → `@2`).
 - **Real warehouse loading**: rows land in Parquet on local disk. A production
-  pipeline would COPY into Snowflake using the `destination.snowflake_table`
-  declared in the registry.
+  pipeline would COPY into Snowflake; a future milestone adds Snowflake table
+  metadata to the registry so the destination can be declared alongside the
+  event schema.
 
 ## Reading order
 
