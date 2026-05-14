@@ -1,8 +1,7 @@
 # OpenEvents demo
 
-A small storefront pipeline that exercises every moving part of OpenEvents:
-registry → protobuf codegen → Go API publishing to SQS → Python consumer
-landing events in Parquet.
+A realistic storefront pipeline that exercises every moving part of OpenEvents:
+a directory registry with 12 events across 2 domains (user, device) → protobuf codegen → Go API publishing to SQS → Python consumer landing events in Parquet.
 
 > **Want to understand how it works?** Read
 > [`GUIDE.md`](./GUIDE.md) — an annotated walkthrough of every component.
@@ -26,10 +25,10 @@ make demo
 That target:
 
 1. Validates the registry and lock
-2. Generates protobuf + cross-language constants
+2. Generates protobuf and cross-language constants via `openevents generate`
 3. Brings up LocalStack and creates the SQS queue
 4. Builds and starts the Go API
-5. POSTs the three sample events under [`samples/`](./samples/)
+5. POSTs the 12 sample events under [`samples/`](./samples/) across both domains
 6. Drains the queue with the Python consumer (`--until-empty`)
 7. Prints a summary of the Parquet output
 8. Tears LocalStack and the API down
@@ -41,7 +40,7 @@ faster — most of the time is LocalStack image download on the first run.
 
 | Target | What it does |
 |--------|--------------|
-| `make gen` | Validate + lock-check + generate proto + buf generate + generate cross-language constants. Idempotent; re-run after any registry change. |
+| `make gen` | Validate + lock-check + generate (proto + constants). Idempotent; re-run after any registry change. |
 | `make up` | `docker compose up -d localstack` and wait for SQS to be ready. |
 | `make seed` | Create the `storefront-events` SQS queue inside LocalStack. |
 | `make api` | Run the Go API in the foreground on `:8080`. Use in a second terminal during a step-by-step walkthrough. |
@@ -54,19 +53,33 @@ faster — most of the time is LocalStack image download on the first run.
 
 ## Sending events by hand
 
-With `make up && make seed && make api` running:
+With `make up && make seed && make api` running, send an event:
 
 ```bash
-curl -X POST http://localhost:8080/v1/events/checkout-started \
+curl -X POST http://localhost:8080/v1/events/user/auth/signup \
   -H 'content-type: application/json' \
-  --data-binary @samples/checkout-started.json
+  --data-binary @samples/user-auth-signup.json
 ```
 
-Routes:
+Routes (all POST):
 
-- `POST /v1/events/checkout-started`
-- `POST /v1/events/checkout-completed`
-- `POST /v1/events/search-performed`
+**User domain:**
+- `/v1/events/user/auth/signup`
+- `/v1/events/user/auth/login`
+- `/v1/events/user/auth/logout`
+- `/v1/events/user/cart/checkout`
+- `/v1/events/user/cart/item_added`
+- `/v1/events/user/cart/purchase`
+
+**Device domain:**
+- `/v1/events/device/info/hardware`
+- `/v1/events/device/info/software`
+- `/v1/events/device/info/calibration`
+- `/v1/events/device/diagnostics/stack_usage`
+- `/v1/events/device/incident/drop`
+- `/v1/events/device/incident/temperature`
+
+**Health:**
 - `GET /healthz`
 
 Each successful POST returns `202 Accepted` with `event_id`, `queue_url`, and
@@ -90,23 +103,44 @@ Then `make api` and `make consumer` are unchanged.
 
 ## Layout
 
-```
+```text
 examples/demo/
 ├── GUIDE.md                # annotated walkthrough (start here for "how")
 ├── README.md               # this file (runbook)
-├── Makefile                # targets above
-├── docker-compose.yaml     # LocalStack
+├── Makefile                # make targets
+├── docker-compose.yaml     # LocalStack config
 ├── registry/               # the single source of truth
-│   ├── openevents.yaml         # event + context definitions
-│   └── openevents.lock.yaml    # pinned protobuf field numbers
-├── samples/                # JSON payloads used by `make demo`
+│   ├── openevents.yaml         # root: namespace, packages, codegen config
+│   ├── openevents.lock.yaml    # pinned protobuf field numbers
+│   ├── user/                   # domain 1
+│   │   ├── domain.yml
+│   │   ├── auth/
+│   │   │   ├── signup.yml
+│   │   │   ├── login.yml
+│   │   │   └── logout.yml
+│   │   └── cart/
+│   │       ├── checkout.yml
+│   │       ├── item_added.yml
+│   │       └── purchase.yml
+│   └── device/                 # domain 2
+│       ├── domain.yml
+│       ├── info/
+│       │   ├── hardware.yml
+│       │   ├── software.yml
+│       │   └── calibration.yml
+│       ├── diagnostics/
+│       │   └── stack_usage.yml
+│       └── incident/
+│           ├── drop.yml
+│           └── temperature.yml
+├── samples/                # JSON event payloads (one per event type)
 ├── scripts/
-│   ├── demo.sh             # one-shot orchestration
+│   ├── demo.sh             # orchestrates the one-shot demo
 │   ├── postgen.sh          # post-codegen package wrappers
-│   └── verify.py           # `make verify` reader
+│   └── verify.py           # reads Parquet output for `make verify`
 └── services/
     ├── api/                # Go: Echo + SQS publisher
-    └── consumer/           # Python: boto3 + polars sink
+    └── consumer/           # Python: boto3 + Polars sink
 ```
 
 ## Troubleshooting

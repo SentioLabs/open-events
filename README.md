@@ -2,33 +2,33 @@
 
 OpenEvents is a spec-first event taxonomy compiler for analytics, product, and data pipeline events.
 
-Define events once in YAML, validate the registry in CI, and treat the YAML/IR as the canonical source of truth. Schema technologies are backend/export mechanisms, not the source of truth.
+Define events once in a YAML directory registry, validate in CI, and treat the YAML as the canonical source of truth. Producers, consumers, schemas, and warehouse exports are all generated from it.
 
 ## MVP direction
 
 OpenEvents is intentionally narrow:
 
-- Git-first YAML registry
+- Git-first YAML directory registry (root file + per-domain + per-action)
 - Strict validation
-- Deterministic normalized model
+- Deterministic normalized model and locked field numbers
+- Codegen for protobuf and cross-language constants
 - Future snapshot and breaking-change diff
-- Future backend/export codegen for protobuf, Avro, and JSON Schema
-- Future Go producer codegen
-- Future Python Pydantic consumer codegen
-- Future Snowflake exports
-- Future Markdown event catalog generation
+- Future Avro and JSON Schema backends
+- Future Snowflake DDL and metadata exports
 
 It does not implement an event broker, hosted governance UI, runtime analytics dashboard, or mobile SDK in the MVP.
 
 ## Milestone 1: validate a registry
 
-The first milestone provides the compiler front-end and `validate` command.
+The first milestone validates the registry, locks field numbers, and generates protobuf + cross-language constants.
 
 ```bash
 go run ./cmd/openevents validate ./examples/demo/registry
+go run ./cmd/openevents lock check ./examples/demo/registry
+go run ./cmd/openevents generate ./examples/demo/registry
 ```
 
-Expected output:
+Expected output from `validate`:
 
 ```text
 ok: registry valid (12 events, 4 context fields)
@@ -36,59 +36,66 @@ ok: registry valid (12 events, 4 context fields)
 
 ## Demo
 
-A larger end-to-end example — a Go API publishing to SQS into a Python consumer
-that lands events in Parquet — lives in [`examples/demo/`](./examples/demo/).
-See [`examples/demo/GUIDE.md`](./examples/demo/GUIDE.md) for an annotated
-walkthrough; [`examples/demo/README.md`](./examples/demo/README.md) is the
-runbook.
+A larger end-to-end example — a Go API publishing to SQS, a Python consumer landing events in Parquet — lives in [`examples/demo/`](./examples/demo/). It exercises two domains (user, device) with 12 events total.
 
-Validate it from the repository root:
+See [`examples/demo/GUIDE.md`](./examples/demo/GUIDE.md) for an annotated walkthrough; [`examples/demo/README.md`](./examples/demo/README.md) is the runbook.
+
+Validate the registry from the repository root:
 
 ```bash
 go run ./cmd/openevents validate ./examples/demo/registry
 ```
 
-Expected output:
+## Registry structure
+
+A registry is a directory with:
+
+- **`openevents.yaml`** (root) — namespace, package paths, owners, codegen language targets
+- **`<domain>/domain.yml`** — domain metadata (optional, for multi-service registries)
+- **`<domain>/<action>/<action>.yml`** — event definition (type, properties, context requirements, ownership, destination)
+- **`openevents.lock.yaml`** (committed) — pinned protobuf field numbers for wire-format stability
+
+Example:
 
 ```text
-ok: registry valid (3 events, 4 context fields)
+registry/
+├── openevents.yaml           # namespace, codegen config
+├── openevents.lock.yaml      # field numbers (stable)
+├── user/                      # domain 1
+│   ├── domain.yml
+│   ├── auth/
+│   │   ├── signup.yml
+│   │   ├── login.yml
+│   │   └── logout.yml
+│   └── cart/
+│       ├── checkout.yml
+│       ├── item_added.yml
+│       └── purchase.yml
+└── device/                    # domain 2
+    ├── domain.yml
+    ├── info/
+    │   ├── hardware.yml
+    │   ├── software.yml
+    │   └── calibration.yml
+    ├── diagnostics/
+    │   └── stack_usage.yml
+    └── incident/
+        ├── drop.yml
+        └── temperature.yml
 ```
 
-Generate protobuf output and run Buf against it (see the Backend-driven code generation section below for the full workflow).
+## CLI commands
 
-## Backend-driven code generation
+The `openevents` command provides:
 
-OpenEvents YAML remains the source of truth. Protobuf, Avro, and JSON Schema are backend/export formats. The first durable backend is protobuf + Buf.
+| Command | Purpose |
+|---------|---------|
+| `validate <registry>` | Check YAML well-formedness and schema constraints |
+| `lock check <registry>` | Verify protobuf field numbers match the lock file |
+| `lock update <registry>` | Allocate new field numbers and update the lock file |
+| `generate <registry>` | Emit protobuf + Buf config + codegen bindings (Go, Python) |
 
-### Local Buf setup
-
-Install Buf locally through the repo script:
-
-```bash
-bash scripts/install-buf.sh
-```
-
-Validate the demo registry and committed lock, then generate protobuf output:
-
-```bash
-go run ./cmd/openevents validate ./examples/demo/registry
-go run ./cmd/openevents lock check ./examples/demo/registry
-go run ./cmd/openevents generate proto ./examples/demo/registry ./_build/demo-proto
-```
-
-Use `go run ./cmd/openevents lock update ./examples/demo/registry` only after an approved schema change.
-
-Run Buf against the generated output:
-
-```bash
-.tools/bin/buf lint ./_build/demo-proto
-.tools/bin/buf build ./_build/demo-proto
-(cd ./_build/demo-proto && PATH="$(pwd)/../../.tools/bin:$PATH" ../../.tools/bin/buf generate .)
-```
-
-The `_build/` directory is ignored by Git and skipped by `go test ./...`.
-
-The demo is also covered by `internal/integration/validate_demo_test.go`, which runs the real CLI validate flow, generates protobuf output, builds it with Buf, and verifies end-to-end Go/Python interop using `protoc-gen-go` and `protoc-gen-python` against the pinned protobuf runtime.
+The `_build/` directory contains generated artifacts and is ignored by Git.
 
 ## Development
 
@@ -102,8 +109,9 @@ go test ./...
 
 1. Parse and validate registries.
 2. Generate normalized snapshots and detect breaking changes.
-3. Generate protobuf backend artifacts with Buf.
-4. Generate Go producer models.
-5. Generate Python Pydantic consumer models.
-6. Export JSON Schema, Avro, and Snowflake DDL.
-7. Generate Markdown event catalog docs.
+3. Lock and manage protobuf field numbers.
+4. Codegen protobuf + Buf integration.
+5. Codegen cross-language constants.
+6. Future Go producer and Python consumer codegen.
+7. Export JSON Schema, Avro, and Snowflake DDL.
+8. Generate Markdown event catalog docs.

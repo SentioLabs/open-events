@@ -44,31 +44,95 @@ roadmap.
 
 ## The registry
 
-[`registry/openevents.yaml`](./registry/openevents.yaml) is the single source of
-truth. Three sections matter most.
+The registry is a directory tree, not a single file. This separates concerns and makes it easy for multi-team projects to own their own domains.
 
-### Header
+### Root file
+
+[`registry/openevents.yaml`](./registry/openevents.yaml) defines the namespace, package paths, and code generation targets:
 
 ```yaml
 openevents: 0.1.0
-namespace: com.acme.storefront
+namespace: com.acme.platform
 
 package:
-  go: github.com/acme/storefront/events
-  python: acme_storefront.events
+  go: github.com/sentiolabs/open-events/examples/demo/services/api/eventmap
+  python: consumer
+
+owners:
+  - { team: growth, email: growth-data@example.com, slack: "#team-growth" }
+  - { team: device-platform, email: device-platform@example.com }
+
+codegen:
+  languages: [go, python]
+  configs:
+    go:
+      out: ../services/api/eventmap
+    python:
+      out: ../services/consumer/src/consumer
 ```
 
-The namespace is the proto package and the prefix everything generated derives
-from. The `package` block tells the codegen what import paths to declare in
-generated source — this is the only place those strings live.
+The `namespace` is the proto package and the prefix everything generated derives from. The `package` block tells codegen where to write generated files in each language. The `codegen.languages` list determines which backends are targeted (here: Go and Python).
 
-### Shared context
+### Domain metadata
+
+Each domain directory has a `domain.yml`:
+
+```yaml
+# registry/user/domain.yml
+domain: user
+description: User lifecycle and shopping events
+owner: growth
+```
+
+Domain metadata is optional but helps organize multi-team registries.
+
+### Event definitions
+
+Each event lives in its own file under `<domain>/<action>/<action>.yml`:
+
+```yaml
+# registry/user/auth/signup.yml
+event: user.auth.signup
+version: 1
+status: active
+owner: growth
+producer: storefront-api
+destination:
+  queue: storefront-events
+  snowflake_table: fact_user_signup
+context:
+  - tenant_id
+  - user_id
+  - session_id
+  - platform
+properties:
+  method:
+    type: enum
+    values: [email, sso, phone]
+    required: true
+  plan:
+    type: string
+    required: true
+```
+
+The file path encodes the domain and action hierarchy: `user/auth/signup.yml` becomes the event `user.auth.signup@1`. An event has a version, owner, producer, destinations (queue, warehouse table), required context fields, and a property bag.
+
+### Context fields
+
+Context fields are shared across all events (defined in the root file or inherited):
 
 ```yaml
 context:
   tenant_id:
     type: string
     required: true
+    pii: none
+  user_id:
+    type: string
+    required: true
+    pii: personal
+  session_id:
+    type: string
     pii: none
   platform:
     type: enum
@@ -77,44 +141,7 @@ context:
     pii: none
 ```
 
-Context fields are attached to every event. Defining them once means a new
-event gets the right tenant/user/session/platform fields for free, and a
-warehouse query like "events from the iOS app this week" doesn't need a
-per-event `JOIN`. PII tags are first-class: `personal`, `pseudonymous`,
-`sensitive`, or `none`. Downstream tooling can use them for masking, retention
-policies, or access control.
-
-### Events
-
-```yaml
-events:
-  checkout.started:
-    version: 1
-    status: active
-    owner: growth
-    producer: storefront-api
-    destination:
-      queue: storefront-events
-      snowflake_table: fact_checkout_started
-    properties:
-      cart_id:
-        type: uuid
-        required: true
-      currency:
-        type: enum
-        values: [USD, EUR, GBP]
-        required: true
-```
-
-An event has a name (`checkout.started`), a version, an owner, the producer
-service, a destination (queue + warehouse table), and a property bag. Names use
-dots; versions are integers; the canonical wire string is
-`<name>@<version>` — `checkout.started@1` here.
-
-> **Tip — owners and destinations:** these surface in generated docs and can
-> drive Slack notifications, ownership audits, and CI gates ("blocking
-> changes to `growth`-owned events require a `growth` approver"). The demo
-> doesn't wire that up, but the data is in the registry.
+Defining context once means every event gets the right tenant/user/session/platform fields for free, and a warehouse query like "events from the iOS app this week" doesn't need a per-event `JOIN`. PII tags are first-class: `personal`, `pseudonymous`, `sensitive`, or `none`. Downstream tooling can use them for masking, retention policies, or access control.
 
 ## The lock file
 
@@ -154,16 +181,25 @@ it later in a separate, reviewed step.
 
 ## Code generation
 
-`make gen` runs four steps:
+`make gen` runs three steps in a single `openevents generate` invocation:
 
 1. `openevents validate ./registry` — registry well-formedness
-2. `openevents lock check ./registry` — wire-format compatibility
-3. `openevents generate proto ./registry ./_build/demo-proto` — emits a
-   `.proto` file + `buf.yaml` + `buf.gen.yaml` from the registry
-4. `buf generate .` against that output — produces `events.pb.go` and
-   `events_pb2.py` via standard Buf/protoc plugins
-5. `openevents generate constants ./registry --go-out=... --python-out=...` —
-   emits matching event-name constants in both languages
+2. `openevents lock check ./registry` — wire-format compatibility  
+3. `openevents generate ./registry` — emits protobuf files, Buf config, and cross-language constants
+
+The `generate` command:
+- Emits a `.proto` file + `buf.yaml` + `buf.gen.yaml` into `registry/.openevents/proto/`
+- Uses `codegen.languages` from the root YAML to decide which language bindings to generate
+- Writes Go constants to the path in `codegen.configs.go.out` (here: `services/api/eventmap/`)
+- Writes Python constants to the path in `codegen.configs.python.out` (here: `services/consumer/src/consumer/`)
+
+After `openevents generate`, the Makefile runs:
+
+```bash
+cd (.openevents/proto) && buf generate .
+```
+
+This produces `events.pb.go` and `events_pb2.py` via Buf's standard protoc plugins.
 
 The Go bindings land in
 [`_build/demo-proto/gen/go/`](./_build/demo-proto/) (gitignored) and the Python
@@ -172,26 +208,33 @@ bindings in `_build/demo-proto/gen/python/`. The Go side is consumed via a
 an editable path source declared in
 [`services/consumer/pyproject.toml`](./services/consumer/pyproject.toml).
 
-The generated **constants** are the cross-language glue. The same registry
-yields:
+The generated **constants** are the cross-language glue. Event names are organized per domain. For the user domain:
 
 ```go
-// services/api/eventmap/event_names.go (generated)
+// services/api/eventmap/user/event_names.go (generated)
+package user
+
 const (
-    CheckoutCompletedV1 = "checkout.completed@1"
-    CheckoutStartedV1   = "checkout.started@1"
-    SearchPerformedV1   = "search.performed@1"
+    AuthLoginV1 = "user.auth.login@1"
+    AuthLogoutV1 = "user.auth.logout@1"
+    AuthSignupV1 = "user.auth.signup@1"
+    CartCheckoutV1 = "user.cart.checkout@1"
+    CartItemAddedV1 = "user.cart.item_added@1"
+    CartPurchaseV1 = "user.cart.purchase@1"
 )
 ```
 
 ```python
-# services/consumer/src/consumer/event_names.py (generated)
-CHECKOUT_COMPLETED_V1 = "checkout.completed@1"
-CHECKOUT_STARTED_V1 = "checkout.started@1"
-SEARCH_PERFORMED_V1 = "search.performed@1"
+# services/consumer/src/consumer/event_names/user.py (generated)
+AUTH_LOGIN_V1 = "user.auth.login@1"
+AUTH_LOGOUT_V1 = "user.auth.logout@1"
+AUTH_SIGNUP_V1 = "user.auth.signup@1"
+CART_CHECKOUT_V1 = "user.cart.checkout@1"
+CART_ITEM_ADDED_V1 = "user.cart.item_added@1"
+CART_PURCHASE_V1 = "user.cart.purchase@1"
 ```
 
-A registry change → both files regenerate. There is no possible state where Go
+A registry change → all files regenerate. There is no possible state where Go
 and Python disagree about the canonical name of an event.
 
 ## The producer
@@ -199,53 +242,59 @@ and Python disagree about the canonical name of an event.
 The Go API is a small Echo service that accepts JSON, validates it against the
 registry's shape, builds the proto envelope, and publishes to SQS.
 
-[`services/api/eventmap/eventmap.go`](./services/api/eventmap/eventmap.go)
-defines a request struct per event with `Validate()` and `ToProto()` methods:
+Per-domain packages organize the route tables. [`services/api/eventmap/user/routes.go`](./services/api/eventmap/user/routes.go) defines routes for the user domain:
 
 ```go
-type CheckoutStartedRequest struct {
-    Context       Context `json:"context"`
-    CartID        string  `json:"cart_id"`
-    ItemCount     int64   `json:"item_count"`
-    SubtotalCents int64   `json:"subtotal_cents"`
-    Currency      string  `json:"currency"`
-}
-
-func (r CheckoutStartedRequest) ToProto() *eventspb.CheckoutStartedV1 {
-    return &eventspb.CheckoutStartedV1{
-        EventName:    CheckoutStartedV1,  // generated constant
-        EventVersion: 1,
-        EventId:      newEventID(),
-        EventTs:      newTimestamp(),
-        Client:       newClient(),
-        Context:      r.Context.toProto(),
-        Properties: &eventspb.CheckoutStartedV1Properties{
-            CartId:        proto.String(r.CartID),
-            ItemCount:     proto.Int64(r.ItemCount),
-            SubtotalCents: proto.Int64(r.SubtotalCents),
-            Currency:      currencyByName[r.Currency].Enum(),
-        },
+func Routes() []eventmap.Route {
+    return []eventmap.Route{
+        {Path: "/v1/events/user/auth/signup",      EventName: AuthSignupV1,     Build: buildAuthSignup},
+        {Path: "/v1/events/user/auth/login",       EventName: AuthLoginV1,      Build: buildAuthLogin},
+        {Path: "/v1/events/user/auth/logout",      EventName: AuthLogoutV1,     Build: buildAuthLogout},
+        {Path: "/v1/events/user/cart/checkout",    EventName: CartCheckoutV1,   Build: buildCartCheckout},
+        {Path: "/v1/events/user/cart/item_added",  EventName: CartItemAddedV1,  Build: buildCartItemAdded},
+        {Path: "/v1/events/user/cart/purchase",    EventName: CartPurchaseV1,   Build: buildCartPurchase},
     }
 }
 ```
 
-The handler pipeline in
-[`services/api/server/server.go`](./services/api/server/server.go) is a small
-route table:
+Each event file (e.g., [`services/api/eventmap/user/auth_signup.go`](./services/api/eventmap/user/auth_signup.go)) defines a request struct and build function:
 
 ```go
-type route struct {
-    path      string
-    eventName string
-    build     buildFunc
+type AuthSignupRequest struct {
+    Context Context `json:"context"`
+    Method  string  `json:"method"`
+    Plan    string  `json:"plan"`
 }
 
-func routes() []route {
-    return []route{
-        {path: "/v1/events/checkout-started",   eventName: eventmap.CheckoutStartedV1,   build: ...},
-        {path: "/v1/events/checkout-completed", eventName: eventmap.CheckoutCompletedV1, build: ...},
-        {path: "/v1/events/search-performed",   eventName: eventmap.SearchPerformedV1,   build: ...},
+func buildAuthSignup(c echo.Context) (*eventspb.UserAuthSignupV1, []FieldError, error) {
+    var req AuthSignupRequest
+    if err := c.Bind(&req); err != nil {
+        return nil, nil, err
     }
+    if errs := req.Validate(); len(errs) > 0 {
+        return nil, errs, nil
+    }
+    return &eventspb.UserAuthSignupV1{
+        EventName:    AuthSignupV1,
+        EventVersion: 1,
+        EventId:      newEventID(),
+        EventTs:      newTimestamp(),
+        Client:       newClient(),
+        Context:      req.Context.toProto(),
+        Properties: &eventspb.UserAuthSignupV1Properties{
+            Method: proto.String(req.Method),
+            Plan:   proto.String(req.Plan),
+        },
+    }, nil, nil
+}
+```
+
+The server in [`services/api/server/server.go`](./services/api/server/server.go) collects routes from all domains and wires them:
+
+```go
+routes := append(user.Routes(), device.Routes()...)
+for _, r := range routes {
+    e.POST(r.Path, handle(pub, queueURL, r.EventName, r.Build))
 }
 ```
 
@@ -297,14 +346,14 @@ def decode(event_name: str, body_b64: str) -> dict[str, Any]:
     return MessageToDict(msg, preserving_proto_field_name=True)
 ```
 
-The keys (`CHECKOUT_STARTED_V1`, etc.) are imported from the generated
-[`event_names.py`](./services/consumer/src/consumer/event_names.py). Renaming
-an event in the registry forces a regenerate, which forces a re-resolve here.
+The keys (e.g., `AUTH_SIGNUP_V1`) are imported from the generated
+[`event_names/user.py`](./services/consumer/src/consumer/event_names/user.py) and [`event_names/device.py`](./services/consumer/src/consumer/event_names/device.py)
+modules (one per domain). Renaming an event in the registry forces a regenerate, which forces a re-resolve here.
 
 ### Descriptor-driven schemas (the centerpiece)
 
-[`services/consumer/src/consumer/schemas.py`](./services/consumer/src/consumer/schemas.py)
-derives Polars dataframe schemas *from the generated proto descriptors* at
+[`services/consumer/src/consumer/schemas/user.py`](./services/consumer/src/consumer/schemas/user.py) and [`services/consumer/src/consumer/schemas/device.py`](./services/consumer/src/consumer/schemas/device.py)
+derive Polars dataframe schemas *from the generated proto descriptors* at
 import time:
 
 ```python
@@ -371,7 +420,7 @@ two flushes in the same second don't collide.
 Producer and consumer never call each other. They agree because they both read
 from the registry:
 
-```
+```text
             registry/openevents.yaml
                        │
        ┌───────────────┼────────────────┐
@@ -394,28 +443,28 @@ a generated file.
 
 ## End-to-end data flow
 
-For one POST to `/v1/events/checkout-started`:
+For one POST to `/v1/events/user/auth/signup`:
 
-1. **Client** — `samples/checkout-started.json` POSTed via curl.
+1. **Client** — `samples/user-auth-signup.json` POSTed via curl.
 2. **API binds and validates** —
-   [`server.go::bindBuild`](./services/api/server/server.go) decodes the JSON
-   into `CheckoutStartedRequest` and calls `Validate()`.
-3. **API builds the proto** — `ToProto()` constructs `CheckoutStartedV1` with a
+   [`user/auth_signup.go::buildAuthSignup`](./services/api/eventmap/user/auth_signup.go) decodes the JSON
+   into `AuthSignupRequest` and calls `Validate()`.
+3. **API builds the proto** — `buildAuthSignup` constructs `UserAuthSignupV1` with a
    generated `event_id` (UUIDv4), a server-side `event_ts`, the validated
    request fields, and the shared `Context`.
 4. **API publishes** —
    [`publisher.go::SQSPublisher.Publish`](./services/api/publisher/publisher.go)
    marshals the proto, base64-encodes it into the SQS body, and attaches
-   `event_name=checkout.started@1` and `schema=...` as SQS attributes.
+   `event_name=user.auth.signup@1` and `schema=...` as SQS attributes.
 5. **API responds** — `202 Accepted` with `{event_id, queue_url, message_id}`.
 6. **Consumer long-polls** — `sqs.py::poll` receives the batch from LocalStack
    (or real SQS), reads the `event_name` attribute.
 7. **Consumer dispatches and decodes** — `dispatch.py::decode` picks
-   `events_pb2.CheckoutStartedV1`, parses the body, calls `MessageToDict`.
+   `events_pb2.UserAuthSignupV1`, parses the body, calls `MessageToDict`.
 8. **Consumer appends to the sink** — `sink.py::Sink.append` buffers; on
    threshold or interval, `_write` materializes a Polars DataFrame using
    `EVENT_SCHEMAS[event_name]` and writes
-   `_build/demo-output/checkout_started_v1/<ts>-<seq>.parquet`.
+   `_build/demo-output/user_auth_signup_v1/<ts>-<seq>.parquet`.
 9. **Verify** — `make verify` reads back each per-event-type directory and
    prints the row count + the dataframe.
 
@@ -441,14 +490,17 @@ left as exercises:
 If you want to read the code itself rather than this guide, here's the order
 that produces the fewest open questions:
 
-1. [`registry/openevents.yaml`](./registry/openevents.yaml) — the source of truth
-2. [`registry/openevents.lock.yaml`](./registry/openevents.lock.yaml) — the wire-compatibility pin
-3. After `make gen`: peek at `_build/demo-proto/proto/com/acme/storefront/v1/events.proto`
-4. [`services/api/eventmap/eventmap.go`](./services/api/eventmap/eventmap.go) — JSON → proto
-5. [`services/api/server/server.go`](./services/api/server/server.go) — HTTP wiring
-6. [`services/api/publisher/publisher.go`](./services/api/publisher/publisher.go) — SQS publish
-7. [`services/consumer/src/consumer/schemas.py`](./services/consumer/src/consumer/schemas.py) — descriptor → Polars schema (the most interesting file)
-8. [`services/consumer/src/consumer/sqs.py`](./services/consumer/src/consumer/sqs.py) — poll, dispatch, delete
-9. [`services/consumer/src/consumer/sink.py`](./services/consumer/src/consumer/sink.py) — batching and atomic writes
+1. [`registry/openevents.yaml`](./registry/openevents.yaml) — the root file (namespace, packages, codegen config)
+2. [`registry/user/domain.yml`](./registry/user/domain.yml) and [`registry/device/domain.yml`](./registry/device/domain.yml) — domain metadata
+3. [`registry/user/auth/signup.yml`](./registry/user/auth/signup.yml) — an example event definition
+4. [`registry/openevents.lock.yaml`](./registry/openevents.lock.yaml) — the wire-compatibility pin
+5. After `make gen`: peek at `registry/.openevents/proto/proto/com/acme/platform/v1/events.proto`
+6. [`services/api/eventmap/user/routes.go`](./services/api/eventmap/user/routes.go) and [`services/api/eventmap/device/routes.go`](./services/api/eventmap/device/routes.go) — route tables per domain
+7. [`services/api/eventmap/user/auth_signup.go`](./services/api/eventmap/user/auth_signup.go) — an example event handler
+8. [`services/api/server/server.go`](./services/api/server/server.go) — HTTP wiring and domain route collection
+9. [`services/api/publisher/publisher.go`](./services/api/publisher/publisher.go) — SQS publish
+10. [`services/consumer/src/consumer/schemas.py`](./services/consumer/src/consumer/schemas.py) — descriptor → Polars schema (the most interesting file)
+11. [`services/consumer/src/consumer/sqs.py`](./services/consumer/src/consumer/sqs.py) — poll, dispatch, delete
+12. [`services/consumer/src/consumer/sink.py`](./services/consumer/src/consumer/sink.py) — batching and atomic writes
 
 Then run `make demo` and tail the logs.
