@@ -1,6 +1,8 @@
 package device
 
 import (
+	"time"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -26,7 +28,7 @@ type ModulePcbVersionRequest struct {
 type InfoHardwareRequest struct {
 	Context             DeviceContext              `json:"context"`
 	UniqueID            string                     `json:"unique_id"`
-	ManufacturingTs     string                     `json:"manufacturing_timestamp"`
+	ManufacturingTs     int64                      `json:"manufacturing_timestamp"` // unix epoch seconds
 	EepromFormatVersion EepromFormatVersionRequest `json:"eeprom_format_version"`
 	ModulePcbVersion    ModulePcbVersionRequest    `json:"module_pcb_version"`
 	SensorType          string                     `json:"sensor_type"` // "co"|"alcohol"|"oxygen"|"fuel_cell"
@@ -68,8 +70,8 @@ func (r InfoHardwareRequest) ToProto() eventmap.EnvelopeMessage {
 			Minor: proto.Int64(r.ModulePcbVersion.Minor),
 		},
 	}
-	if r.ManufacturingTs != "" {
-		props.ManufacturingTimestamp = timestamppb.Now() // demo: timestamp string parsing is out of scope for this task
+	if r.ManufacturingTs != 0 {
+		props.ManufacturingTimestamp = timestamppb.New(time.Unix(r.ManufacturingTs, 0))
 	}
 	if r.FuelCellLotNumber != "" {
 		props.FuelCellLotNumber = proto.String(r.FuelCellLotNumber)

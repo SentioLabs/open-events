@@ -1,6 +1,8 @@
 package device
 
 import (
+	"time"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -15,7 +17,7 @@ type InfoCalibrationRequest struct {
 	Context       DeviceContext `json:"context"`
 	Concentration float64       `json:"concentration"`
 	Integral      int64         `json:"integral"`
-	Timestamp     string        `json:"timestamp"`
+	Timestamp     int64         `json:"timestamp"` // unix epoch seconds
 }
 
 // Validate returns field-level errors for the request, empty on success.
@@ -35,7 +37,7 @@ func (r InfoCalibrationRequest) ToProto() eventmap.EnvelopeMessage {
 		Properties: &devicepb.DeviceInfoCalibrationV1Properties{
 			Concentration: proto.Float64(r.Concentration),
 			Integral:      proto.Int64(r.Integral),
-			Timestamp:     timestamppb.Now(), // demo: timestamp string parsing is out of scope for this task
+			Timestamp:     timestamppb.New(time.Unix(r.Timestamp, 0)),
 		},
 	}
 }

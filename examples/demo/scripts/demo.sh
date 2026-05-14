@@ -40,14 +40,16 @@ for _ in $(seq 1 60); do
   sleep 0.5
 done
 
-for sample in samples/*.json; do
-  route="$(basename "$sample" .json)"
+while IFS= read -r sample; do
+  # samples/ mirrors the registry tree, so the path inside samples/
+  # (minus the .json extension) IS the URL route.
+  route="${sample#samples/}"; route="${route%.json}"
   echo "POST /v1/events/$route"
   curl -fsS -X POST "http://localhost:8080/v1/events/$route" \
     -H 'content-type: application/json' \
     --data-binary "@$sample"
   echo
-done
+done < <(find samples -name '*.json' | sort)
 
 echo "draining consumer..."
 (cd services/consumer && uv run python -m consumer --until-empty)

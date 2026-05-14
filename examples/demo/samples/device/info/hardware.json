@@ -7,8 +7,8 @@
   },
   "unique_id": "ASM-00412",
   "manufacturing_timestamp": 1704067200,
-  "eeprom_format_version": "1.0",
-  "module_pcb_version": "2.1",
+  "eeprom_format_version": { "major": 1, "minor": 0 },
+  "module_pcb_version": { "major": 2, "minor": 1 },
   "sensor_type": "oxygen",
   "fuel_cell_lot_number": "FC-2024-0042",
   "fuel_cell_vendor": "Membrapor"
