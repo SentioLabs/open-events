@@ -45,28 +45,46 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 
 	updated := Lock{
 		Version: LockVersion,
-		Context: make(map[string]LockedField, len(reg.Context)),
-		Events:  make(map[string]LockedEvent, len(reg.Events)),
+		Domains: make(map[string]LockedDomain, len(reg.Domains)),
+		// Start from a copy of existing.Events so tombstones (events present in
+		// the lock but absent from the registry) are preserved verbatim.
+		Events: copyLockedEvents(existing.Events),
 	}
 
-	contextMax := 0
-	for _, name := range sortedLockedFieldNames(existing.Context) {
-		locked := existing.Context[name]
-		updated.Context[name] = locked
-		if locked.ProtoNumber > contextMax {
-			contextMax = locked.ProtoNumber
+	// Allocate per-domain context proto numbers, preserving existing assignments.
+	for _, domainName := range sortedDomainKeys(reg.Domains) {
+		domain := reg.Domains[domainName]
+		existingDomain := existing.Domains[domainName] // zero-value if absent
+
+		contextMax := 0
+		for _, name := range sortedLockedFieldNames(existingDomain.Context) {
+			locked := existingDomain.Context[name]
+			if locked.ProtoNumber > contextMax {
+				contextMax = locked.ProtoNumber
+			}
 		}
-	}
 
-	for _, name := range sortedFieldNames(reg.Context) {
-		if _, ok := updated.Context[name]; ok {
-			continue
+		lockedCtx := make(map[string]LockedField, len(existingDomain.Context))
+		// Carry forward all existing context entries (including removed fields
+		// whose numbers must not be reused).
+		for name, locked := range existingDomain.Context {
+			lockedCtx[name] = locked
 		}
-		number := nextSequentialNumber(contextMax)
-		contextMax = number
-		updated.Context[name] = LockedField{StableID: name, ProtoNumber: number}
+		// Add any new context fields.
+		for _, name := range sortedFieldNames(domain.Context) {
+			if _, ok := lockedCtx[name]; ok {
+				continue
+			}
+			number := nextSequentialNumber(contextMax)
+			contextMax = number
+			lockedCtx[name] = LockedField{StableID: name, ProtoNumber: number}
+		}
+
+		updated.Domains[domainName] = LockedDomain{Context: lockedCtx}
 	}
 
+	// Update or add events from the registry. Events already in updated.Events
+	// that are absent from reg.Events remain as tombstones (no action needed).
 	seenEventKeys := make(map[string]struct{}, len(reg.Events))
 	for _, event := range reg.Events {
 		key := eventKey(event)
@@ -132,6 +150,20 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 	return updated, nil
 }
 
+// copyLockedEvents returns a shallow copy of the events map. This is the
+// starting point for UpdateLock so that events not present in reg.Events
+// (tombstones) are preserved verbatim in the output.
+func copyLockedEvents(events map[string]LockedEvent) map[string]LockedEvent {
+	if events == nil {
+		return make(map[string]LockedEvent)
+	}
+	cp := make(map[string]LockedEvent, len(events))
+	for k, v := range events {
+		cp[k] = v
+	}
+	return cp
+}
+
 func CheckLock(lock Lock, reg registry.Registry) error {
 	if lock.Version != LockVersion {
 		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
@@ -157,23 +189,27 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 		return err
 	}
 
-	for _, name := range sortedLockedFieldNames(expected.Context) {
-		exp := expected.Context[name]
-		actual, ok := lock.Context[name]
+	// Verify all registry domains have matching lock domain entries.
+	for _, domainName := range sortedLockedDomainKeys(expected.Domains) {
+		expDomain := expected.Domains[domainName]
+		actualDomain, ok := lock.Domains[domainName]
 		if !ok {
-			return fmt.Errorf("schema lock is stale: context.%s is missing", name)
+			return fmt.Errorf("schema lock is stale: domains.%s is missing", domainName)
 		}
-		if err := compareLockedField("context."+name, actual, exp); err != nil {
-			return err
+		for _, name := range sortedLockedFieldNames(expDomain.Context) {
+			exp := expDomain.Context[name]
+			actual, ok := actualDomain.Context[name]
+			if !ok {
+				return fmt.Errorf("schema lock is stale: domains.%s.context.%s is missing", domainName, name)
+			}
+			if err := compareLockedField("domains."+domainName+".context."+name, actual, exp); err != nil {
+				return err
+			}
 		}
 	}
 
-	for _, key := range sortedLockedEventKeys(lock.Events) {
-		if _, ok := expected.Events[key]; !ok {
-			return fmt.Errorf("schema lock is stale: events.%s is not in registry", key)
-		}
-	}
-
+	// Check events: registry events must all be in the lock; lock-only entries
+	// (tombstones) are allowed and do not cause an error.
 	for _, event := range reg.Events {
 		key := eventKey(event)
 		expectedEvent, ok := expected.Events[key]
@@ -272,6 +308,24 @@ func sortedLockedEventKeys(events map[string]LockedEvent) []string {
 	return keys
 }
 
+func sortedDomainKeys(domains map[string]registry.Domain) []string {
+	keys := make([]string, 0, len(domains))
+	for k := range domains {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedLockedDomainKeys(domains map[string]LockedDomain) []string {
+	keys := make([]string, 0, len(domains))
+	for k := range domains {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func compareReservedFields(eventKey string, actual []ReservedField, expected []ReservedField) error {
 	path := "events." + eventKey + ".reserved"
 	if err := checkDuplicateReservedNumbers(path, actual); err != nil {
@@ -352,9 +406,12 @@ func equalReservedFields(left []ReservedField, right []ReservedField) bool {
 }
 
 func validateActiveStableIDs(lock Lock, reg registry.Registry) error {
-	for _, name := range sortedLockedFieldNames(lock.Context) {
-		if err := validateStableID("context."+name, lock.Context[name].StableID, name); err != nil {
-			return err
+	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
+		domain := lock.Domains[domainName]
+		for _, name := range sortedLockedFieldNames(domain.Context) {
+			if err := validateStableID("domains."+domainName+".context."+name, domain.Context[name].StableID, name); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -416,9 +473,12 @@ func validateReservedFieldIdentities(lock Lock, reg registry.Registry) error {
 }
 
 func validateLockNumbers(lock Lock) error {
-	for _, name := range sortedLockedFieldNames(lock.Context) {
-		if err := validateProtoNumber("context."+name, lock.Context[name].ProtoNumber); err != nil {
-			return err
+	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
+		domain := lock.Domains[domainName]
+		for _, name := range sortedLockedFieldNames(domain.Context) {
+			if err := validateProtoNumber("domains."+domainName+".context."+name, domain.Context[name].ProtoNumber); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -455,12 +515,15 @@ func validateProtoNumber(path string, number int) error {
 }
 
 func validateLockNumberHistory(lock Lock) error {
-	contextNumbers := make([]int, 0, len(lock.Context))
-	for _, name := range sortedLockedFieldNames(lock.Context) {
-		contextNumbers = append(contextNumbers, lock.Context[name].ProtoNumber)
-	}
-	if err := checkDenseNumberHistory("context", contextNumbers); err != nil {
-		return err
+	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
+		domain := lock.Domains[domainName]
+		numbers := make([]int, 0, len(domain.Context))
+		for _, name := range sortedLockedFieldNames(domain.Context) {
+			numbers = append(numbers, domain.Context[name].ProtoNumber)
+		}
+		if err := checkDenseNumberHistory("domains."+domainName+".context", numbers); err != nil {
+			return err
+		}
 	}
 
 	for _, key := range sortedLockedEventKeys(lock.Events) {
@@ -514,8 +577,11 @@ func isProtobufReservedNumber(number int) bool {
 }
 
 func validateLockDuplicates(lock Lock) error {
-	if err := checkDuplicateNumbers("context", lock.Context, nil); err != nil {
-		return err
+	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
+		domain := lock.Domains[domainName]
+		if err := checkDuplicateNumbers("domains."+domainName+".context", domain.Context, nil); err != nil {
+			return err
+		}
 	}
 
 	for _, key := range sortedLockedEventKeys(lock.Events) {

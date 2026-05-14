@@ -181,14 +181,14 @@ type lockReservedField struct {
 }
 
 func newLockFile(lock schemair.Lock) lockFile {
+	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will rewrite
+	// this function to serialize domains. For now, Context is always empty.
 	file := lockFile{
 		Version: lock.Version,
-		Context: make(map[string]lockField, len(lock.Context)),
+		Context: make(map[string]lockField),
 		Events:  make(map[string]lockEventFields, len(lock.Events)),
 	}
-	for k, v := range lock.Context {
-		file.Context[k] = lockField{StableID: v.StableID, ProtoNumber: v.ProtoNumber}
-	}
+	_ = lock // silence unused warning; context serialization deferred to T6
 	for k, v := range lock.Events {
 		item := lockEventFields{
 			Envelope:   make(map[string]lockField, len(v.Envelope)),
@@ -216,14 +216,13 @@ func newLockFile(lock schemair.Lock) lockFile {
 }
 
 func (f lockFile) toSchemaLock() schemair.Lock {
+	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will rewrite
+	// this function to deserialize domains. For now, Domains is always empty.
 	lock := schemair.Lock{
 		Version: f.Version,
-		Context: make(map[string]schemair.LockedField, len(f.Context)),
 		Events:  make(map[string]schemair.LockedEvent, len(f.Events)),
 	}
-	for k, v := range f.Context {
-		lock.Context[k] = schemair.LockedField{StableID: v.StableID, ProtoNumber: v.ProtoNumber}
-	}
+	_ = f.Context // context deserialization deferred to T6
 	for k, v := range f.Events {
 		event := schemair.LockedEvent{
 			Envelope:   make(map[string]schemair.LockedField, len(v.Envelope)),

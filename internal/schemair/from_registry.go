@@ -132,73 +132,14 @@ func clientMessage() Message {
 	}
 }
 
+// lowerContextMessage is a stub pending T4.
+// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite this
+// function to look up proto numbers from the appropriate domain's context map.
 func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message, error) {
-	message := Message{Name: "Context", Fields: make([]Field, 0, len(context)), Enums: []Enum{}}
-	usedNumbers := make(map[int]string)       // map[protoNumber]fieldName for duplicate detection
-	enumTypeNames := make(map[string]string)  // map[enumTypeName]fieldName for collision detection
-	enumValueNames := make(map[string]string) // map[renderedValueName]source for value collision detection
-
-	for _, name := range sortedRegistryFieldNames(context) {
-		field := context[name]
-
-		// Validate field name is a valid protobuf identifier
-		if err := isValidProtoIdentifier(name); err != nil {
-			return Message{}, fmt.Errorf("context.%s: %w", name, err)
-		}
-
-		locked, ok := lock.Context[name]
-		if !ok {
-			return Message{}, fmt.Errorf("schema lock is missing context.%s", name)
-		}
-
-		// Validate StableID matches field name
-		if locked.StableID != name {
-			return Message{}, fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
-		}
-
-		// Validate proto number
-		if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
-			return Message{}, err
-		}
-
-		// Check for duplicate numbers
-		if existing, exists := usedNumbers[locked.ProtoNumber]; exists {
-			return Message{}, fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
-		}
-		usedNumbers[locked.ProtoNumber] = name
-
-		lowered, enum, err := lowerField(field, locked.ProtoNumber, "context."+name)
-		if err != nil {
-			return Message{}, err
-		}
-		message.Fields = append(message.Fields, lowered)
-		if enum != nil {
-			// Check for enum type name collision
-			if existing, exists := enumTypeNames[enum.Name]; exists {
-				return Message{}, fmt.Errorf("context enum type name collision: fields %q and %q both generate enum type %q", existing, name, enum.Name)
-			}
-			enumTypeNames[enum.Name] = name
-
-			// Check for enum value name collisions across all enums in this message
-			// Reserve the synthesized zero value name
-			zeroValueName := EnumZeroValueName(enum.Name)
-			if existing, exists := enumValueNames[zeroValueName]; exists {
-				return Message{}, fmt.Errorf("context enum value collision: field %q zero value %q conflicts with %s", name, zeroValueName, existing)
-			}
-			enumValueNames[zeroValueName] = fmt.Sprintf("field %q zero value", name)
-
-			// Reserve all authored value names
-			for _, val := range enum.Values {
-				if existing, exists := enumValueNames[val.Name]; exists {
-					return Message{}, fmt.Errorf("context enum value collision: field %q value %q (from %q) conflicts with %s", name, val.Name, val.Original, existing)
-				}
-				enumValueNames[val.Name] = fmt.Sprintf("field %q value %q", name, val.Original)
-			}
-
-			message.Enums = append(message.Enums, *enum)
-		}
+	if len(context) > 0 {
+		return Message{}, fmt.Errorf("lowerContextMessage: per-domain context lowering not yet implemented (see T4)")
 	}
-	return message, nil
+	return Message{Name: "Context", Fields: []Field{}, Enums: []Enum{}}, nil
 }
 
 func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
@@ -405,36 +346,10 @@ func validateLockForLowering(reg registry.Registry, lock Lock) error {
 	return nil
 }
 
+// validateContextLock is a stub pending T4.
+// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite this
+// function to validate per-domain context lock entries.
 func validateContextLock(reg registry.Registry, lock Lock) error {
-	// Validate all active context fields have valid lock entries
-	for _, name := range sortedRegistryFieldNames(reg.Context) {
-		locked, ok := lock.Context[name]
-		if !ok {
-			// This is handled elsewhere with more specific error
-			continue
-		}
-
-		// Validate proto number
-		if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
-			return err
-		}
-
-		// Validate StableID
-		if locked.StableID != name {
-			return fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
-		}
-	}
-
-	// Check for duplicate proto numbers in context
-	byNumber := make(map[int]string)
-	for _, name := range sortedLockedFieldNames(lock.Context) {
-		locked := lock.Context[name]
-		if existing, exists := byNumber[locked.ProtoNumber]; exists {
-			return fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
-		}
-		byNumber[locked.ProtoNumber] = name
-	}
-
 	return nil
 }
 
@@ -573,12 +488,8 @@ func validateReservedEntries(key string, lockedEvent LockedEvent) error {
 }
 
 func validateNoStaleLockEntries(reg registry.Registry, lock Lock) error {
-	// Check for stale context entries
-	for _, name := range sortedLockedFieldNames(lock.Context) {
-		if _, ok := reg.Context[name]; !ok {
-			return fmt.Errorf("schema lock has stale context entry %q not in registry", name)
-		}
-	}
+	// Note: stale domain/context checks are handled in T4 (Lock.Context was
+	// replaced by per-domain Lock.Domains in T3).
 
 	// Build map of registry events for quick lookup
 	regEvents := make(map[string]registry.Event)

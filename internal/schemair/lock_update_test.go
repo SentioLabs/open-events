@@ -8,41 +8,59 @@ import (
 	"github.com/sentiolabs/open-events/internal/registry"
 )
 
-func TestUpdateLockAllocatesStableContextNumbers(t *testing.T) {
-	reg := registry.Registry{
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id"},
-			"region":    {Name: "region"},
+// domainCtx is a helper that builds a Registry with a single domain and its context fields.
+func domainCtx(domainName string, fields map[string]registry.Field) registry.Registry {
+	return registry.Registry{
+		Domains: map[string]registry.Domain{
+			domainName: {Name: domainName, Context: fields},
 		},
 	}
+}
+
+func TestUpdateLockAllocatesStableDomainContextNumbers(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"tenant_id": {Name: "tenant_id"},
+		"region":    {Name: "region"},
+	})
 
 	lock, err := UpdateLock(Lock{}, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() error = %v", err)
 	}
 
-	if lock.Context["region"].ProtoNumber != 1 {
-		t.Fatalf("region ProtoNumber = %d, want 1", lock.Context["region"].ProtoNumber)
+	userCtx := lock.Domains["user"].Context
+	if userCtx["region"].ProtoNumber != 1 {
+		t.Fatalf("region ProtoNumber = %d, want 1", userCtx["region"].ProtoNumber)
 	}
-	if lock.Context["tenant_id"].ProtoNumber != 2 {
-		t.Fatalf("tenant_id ProtoNumber = %d, want 2", lock.Context["tenant_id"].ProtoNumber)
+	if userCtx["tenant_id"].ProtoNumber != 2 {
+		t.Fatalf("tenant_id ProtoNumber = %d, want 2", userCtx["tenant_id"].ProtoNumber)
 	}
 
-	reg.Context["country"] = registry.Field{Name: "country"}
+	reg.Domains["user"] = registry.Domain{
+		Name: "user",
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id"},
+			"region":    {Name: "region"},
+			"country":   {Name: "country"},
+		},
+	}
 
 	updated, err := UpdateLock(lock, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() second error = %v", err)
 	}
 
-	if updated.Context["region"].ProtoNumber != lock.Context["region"].ProtoNumber {
-		t.Fatalf("region ProtoNumber changed from %d to %d", lock.Context["region"].ProtoNumber, updated.Context["region"].ProtoNumber)
+	updatedCtx := updated.Domains["user"].Context
+	if updatedCtx["region"].ProtoNumber != lock.Domains["user"].Context["region"].ProtoNumber {
+		t.Fatalf("region ProtoNumber changed from %d to %d",
+			lock.Domains["user"].Context["region"].ProtoNumber, updatedCtx["region"].ProtoNumber)
 	}
-	if updated.Context["tenant_id"].ProtoNumber != lock.Context["tenant_id"].ProtoNumber {
-		t.Fatalf("tenant_id ProtoNumber changed from %d to %d", lock.Context["tenant_id"].ProtoNumber, updated.Context["tenant_id"].ProtoNumber)
+	if updatedCtx["tenant_id"].ProtoNumber != lock.Domains["user"].Context["tenant_id"].ProtoNumber {
+		t.Fatalf("tenant_id ProtoNumber changed from %d to %d",
+			lock.Domains["user"].Context["tenant_id"].ProtoNumber, updatedCtx["tenant_id"].ProtoNumber)
 	}
-	if updated.Context["country"].ProtoNumber != 3 {
-		t.Fatalf("country ProtoNumber = %d, want 3", updated.Context["country"].ProtoNumber)
+	if updatedCtx["country"].ProtoNumber != 3 {
+		t.Fatalf("country ProtoNumber = %d, want 3", updatedCtx["country"].ProtoNumber)
 	}
 }
 
@@ -109,21 +127,23 @@ func TestUpdateLockPreservesExistingPropertyNumbers(t *testing.T) {
 	}
 }
 
-func TestUpdateLockDoesNotReuseReservedNumbers(t *testing.T) {
+func TestUpdateLockDoesNotReuseReservedDomainContextNumbers(t *testing.T) {
 	existing := Lock{
-		Context: map[string]LockedField{
-			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+		Domains: map[string]LockedDomain{
+			"user": {Context: map[string]LockedField{
+				"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+			}},
 		},
 	}
-	reg := registry.Registry{Context: map[string]registry.Field{"region": {Name: "region"}}}
+	reg := domainCtx("user", map[string]registry.Field{"region": {Name: "region"}})
 
 	updated, err := UpdateLock(existing, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() error = %v", err)
 	}
 
-	if updated.Context["region"].ProtoNumber != 2 {
-		t.Fatalf("region ProtoNumber = %d, want 2", updated.Context["region"].ProtoNumber)
+	if updated.Domains["user"].Context["region"].ProtoNumber != 2 {
+		t.Fatalf("region ProtoNumber = %d, want 2", updated.Domains["user"].Context["region"].ProtoNumber)
 	}
 }
 
@@ -218,28 +238,29 @@ func TestUpdateLockRejectsReservedProtoNumberHistoryGap(t *testing.T) {
 	}
 }
 
-func TestUpdateLockRejectsContextHistoryGap(t *testing.T) {
-	reg := registry.Registry{
-		Context: map[string]registry.Field{
-			"account_id": {Name: "account_id"},
-			"region":     {Name: "region"},
-			"tenant_id":  {Name: "tenant_id"},
-		},
-	}
+func TestUpdateLockRejectsDomainContextHistoryGap(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"account_id": {Name: "account_id"},
+		"region":     {Name: "region"},
+		"tenant_id":  {Name: "tenant_id"},
+	})
 
 	lock, err := UpdateLock(Lock{}, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() error = %v", err)
 	}
 
-	delete(lock.Context, "region")
+	// Simulate a history gap by deleting a middle context entry
+	userDomain := lock.Domains["user"]
+	delete(userDomain.Context, "region")
+	lock.Domains["user"] = userDomain
 
 	_, err = UpdateLock(lock, reg)
 	if err == nil {
-		t.Fatalf("UpdateLock() error = nil, want context history gap error")
+		t.Fatalf("UpdateLock() error = nil, want domain context history gap error")
 	}
-	if !strings.Contains(err.Error(), "context") || !strings.Contains(err.Error(), "missing proto number 2") {
-		t.Fatalf("UpdateLock() error = %q, want context history gap", err)
+	if !strings.Contains(err.Error(), "domains.user.context") || !strings.Contains(err.Error(), "missing proto number 2") {
+		t.Fatalf("UpdateLock() error = %q, want domain context history gap", err)
 	}
 }
 
@@ -360,12 +381,14 @@ func TestUpdateLockRejectsExistingProtobufReservedNumbers(t *testing.T) {
 		wantPath string
 	}{
 		{
-			name: "context",
-			existing: Lock{Context: map[string]LockedField{
-				"tenant_id": {StableID: "tenant_id", ProtoNumber: 19000},
+			name: "domain context",
+			existing: Lock{Domains: map[string]LockedDomain{
+				"user": {Context: map[string]LockedField{
+					"tenant_id": {StableID: "tenant_id", ProtoNumber: 19000},
+				}},
 			}},
-			reg:      registry.Registry{Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}},
-			wantPath: "context.tenant_id",
+			reg:      domainCtx("user", map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}),
+			wantPath: "domains.user.context.tenant_id",
 		},
 		{
 			name: "property",
@@ -405,11 +428,102 @@ func TestUpdateLockRejectsExistingProtobufReservedNumbers(t *testing.T) {
 	}
 }
 
-func TestUpdateLockPreservesRemovedContextNumbers(t *testing.T) {
-	reg := registry.Registry{
+func TestUpdateLockPreservesRemovedDomainContextNumbers(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"account_id": {Name: "account_id"},
+		"tenant_id":  {Name: "tenant_id"},
+	})
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	removedNumber := lock.Domains["user"].Context["tenant_id"].ProtoNumber
+	reg.Domains["user"] = registry.Domain{
+		Name: "user",
 		Context: map[string]registry.Field{
 			"account_id": {Name: "account_id"},
-			"tenant_id":  {Name: "tenant_id"},
+		},
+	}
+
+	updated, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+	if updated.Domains["user"].Context["tenant_id"].ProtoNumber != removedNumber {
+		t.Fatalf("removed tenant_id ProtoNumber = %d, want preserved %d",
+			updated.Domains["user"].Context["tenant_id"].ProtoNumber, removedNumber)
+	}
+
+	reg.Domains["user"] = registry.Domain{
+		Name: "user",
+		Context: map[string]registry.Field{
+			"account_id": {Name: "account_id"},
+			"region":     {Name: "region"},
+		},
+	}
+	updated, err = UpdateLock(updated, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after adding context field error = %v", err)
+	}
+
+	if updated.Domains["user"].Context["region"].ProtoNumber != removedNumber+1 {
+		t.Fatalf("region ProtoNumber = %d, want %d",
+			updated.Domains["user"].Context["region"].ProtoNumber, removedNumber+1)
+	}
+}
+
+// TestUpdateLockPreservesEventTombstones verifies that events present in the
+// existing lock but absent from the registry are preserved verbatim (tombstones).
+func TestUpdateLockPreservesEventTombstones(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	// Build initial lock with one event.
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	tombstoneKey := eventKey(event)
+	tombstoneEvent := lock.Events[tombstoneKey]
+
+	// Remove the event from the registry — it should become a tombstone.
+	emptyReg := registry.Registry{}
+	updated, err := UpdateLock(lock, emptyReg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+
+	// Tombstone must be preserved verbatim.
+	gotTombstone, ok := updated.Events[tombstoneKey]
+	if !ok {
+		t.Fatalf("UpdateLock() dropped tombstone event %q; want it preserved", tombstoneKey)
+	}
+	if !reflect.DeepEqual(gotTombstone, tombstoneEvent) {
+		t.Fatalf("UpdateLock() tombstone changed:\n  got  %#v\n  want %#v", gotTombstone, tombstoneEvent)
+	}
+}
+
+// TestUpdateLockPerDomainContextIsolation verifies that two domains can each
+// have a context field with the same name and both start at proto_number 1,
+// since context proto numbers are scoped per domain.
+func TestUpdateLockPerDomainContextIsolation(t *testing.T) {
+	reg := registry.Registry{
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Context: map[string]registry.Field{
+				"tenant_id": {Name: "tenant_id"},
+			}},
+			"device": {Name: "device", Context: map[string]registry.Field{
+				"tenant_id": {Name: "tenant_id"},
+			}},
 		},
 	}
 
@@ -418,25 +532,14 @@ func TestUpdateLockPreservesRemovedContextNumbers(t *testing.T) {
 		t.Fatalf("UpdateLock() error = %v", err)
 	}
 
-	removedNumber := lock.Context["tenant_id"].ProtoNumber
-	delete(reg.Context, "tenant_id")
+	userNum := lock.Domains["user"].Context["tenant_id"].ProtoNumber
+	deviceNum := lock.Domains["device"].Context["tenant_id"].ProtoNumber
 
-	updated, err := UpdateLock(lock, reg)
-	if err != nil {
-		t.Fatalf("UpdateLock() after removal error = %v", err)
+	if userNum != 1 {
+		t.Fatalf("user.tenant_id ProtoNumber = %d, want 1", userNum)
 	}
-	if updated.Context["tenant_id"].ProtoNumber != removedNumber {
-		t.Fatalf("removed tenant_id ProtoNumber = %d, want preserved %d", updated.Context["tenant_id"].ProtoNumber, removedNumber)
-	}
-
-	reg.Context["region"] = registry.Field{Name: "region"}
-	updated, err = UpdateLock(updated, reg)
-	if err != nil {
-		t.Fatalf("UpdateLock() after adding context field error = %v", err)
-	}
-
-	if updated.Context["region"].ProtoNumber != removedNumber+1 {
-		t.Fatalf("region ProtoNumber = %d, want %d", updated.Context["region"].ProtoNumber, removedNumber+1)
+	if deviceNum != 1 {
+		t.Fatalf("device.tenant_id ProtoNumber = %d, want 1", deviceNum)
 	}
 }
 
@@ -556,7 +659,7 @@ func TestCheckLockRejectsTamperedReservedProtoNumber(t *testing.T) {
 }
 
 func TestCheckLockRejectsVersionMismatch(t *testing.T) {
-	reg := registry.Registry{Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}}
+	reg := domainCtx("user", map[string]registry.Field{"tenant_id": {Name: "tenant_id"}})
 	lock, err := UpdateLock(Lock{}, reg)
 	if err != nil {
 		t.Fatalf("UpdateLock() error = %v", err)
@@ -582,8 +685,10 @@ func TestCheckLockRejectsProtobufReservedNumbers(t *testing.T) {
 		},
 	}
 	baseReg := registry.Registry{
-		Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}},
-		Events:  []registry.Event{event},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}},
+		},
+		Events: []registry.Event{event},
 	}
 	baseLock, err := UpdateLock(Lock{}, baseReg)
 	if err != nil {
@@ -607,14 +712,16 @@ func TestCheckLockRejectsProtobufReservedNumbers(t *testing.T) {
 		wantPath string
 	}{
 		{
-			name: "context",
+			name: "domain context",
 			lock: func() Lock {
 				lock := cloneLockForTest(baseLock)
-				lock.Context["tenant_id"] = LockedField{StableID: "tenant_id", ProtoNumber: 19000}
+				userDomain := lock.Domains["user"]
+				userDomain.Context["tenant_id"] = LockedField{StableID: "tenant_id", ProtoNumber: 19000}
+				lock.Domains["user"] = userDomain
 				return lock
 			}(),
 			reg:      baseReg,
-			wantPath: "context.tenant_id",
+			wantPath: "domains.user.context.tenant_id",
 		},
 		{
 			name: "property",
@@ -662,8 +769,8 @@ func TestCheckLockRejectsTamperedActiveStableIDs(t *testing.T) {
 		},
 	}
 	reg := registry.Registry{
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id"},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}},
 		},
 		Events: []registry.Event{event},
 	}
@@ -679,14 +786,16 @@ func TestCheckLockRejectsTamperedActiveStableIDs(t *testing.T) {
 		wantPath string
 	}{
 		{
-			name: "context",
+			name: "domain context",
 			tamper: func(lock Lock) Lock {
-				field := lock.Context["tenant_id"]
+				userDomain := lock.Domains["user"]
+				field := userDomain.Context["tenant_id"]
 				field.StableID = "evil"
-				lock.Context["tenant_id"] = field
+				userDomain.Context["tenant_id"] = field
+				lock.Domains["user"] = userDomain
 				return lock
 			},
-			wantPath: "context.tenant_id",
+			wantPath: "domains.user.context.tenant_id",
 		},
 		{
 			name: "envelope",
@@ -733,8 +842,8 @@ func TestUpdateLockRejectsTamperedActiveStableIDs(t *testing.T) {
 		},
 	}
 	reg := registry.Registry{
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id"},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}}},
 		},
 		Events: []registry.Event{event},
 	}
@@ -750,14 +859,16 @@ func TestUpdateLockRejectsTamperedActiveStableIDs(t *testing.T) {
 		wantPath string
 	}{
 		{
-			name: "context",
+			name: "domain context",
 			tamper: func(lock Lock) Lock {
-				field := lock.Context["tenant_id"]
+				userDomain := lock.Domains["user"]
+				field := userDomain.Context["tenant_id"]
 				field.StableID = "evil"
-				lock.Context["tenant_id"] = field
+				userDomain.Context["tenant_id"] = field
+				lock.Domains["user"] = userDomain
 				return lock
 			},
-			wantPath: "context.tenant_id",
+			wantPath: "domains.user.context.tenant_id",
 		},
 		{
 			name: "envelope",
@@ -955,16 +1066,18 @@ func TestUpdateLockRejectsDuplicateExistingNumbers(t *testing.T) {
 		wantPath string
 	}{
 		{
-			name: "context active active",
-			existing: Lock{Context: map[string]LockedField{
-				"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
-				"region":    {StableID: "region", ProtoNumber: 1},
+			name: "domain context active active",
+			existing: Lock{Domains: map[string]LockedDomain{
+				"user": {Context: map[string]LockedField{
+					"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+					"region":    {StableID: "region", ProtoNumber: 1},
+				}},
 			}},
-			reg: registry.Registry{Context: map[string]registry.Field{
+			reg: domainCtx("user", map[string]registry.Field{
 				"tenant_id": {Name: "tenant_id"},
 				"region":    {Name: "region"},
-			}},
-			wantPath: "context",
+			}),
+			wantPath: "domains.user.context",
 		},
 		{
 			name: "property active active",
@@ -1222,7 +1335,10 @@ func TestCheckLockRejectsRemovedPropertyStillActive(t *testing.T) {
 	}
 }
 
-func TestCheckLockRejectsStaleActiveEvent(t *testing.T) {
+// TestCheckLockAllowsLockOnlyEventsAsTombstones verifies that CheckLock does not
+// reject lock events that are absent from the registry — these are tombstones.
+// (The old behavior rejected them; T3 changes this to allow them.)
+func TestCheckLockAllowsLockOnlyEventsAsTombstones(t *testing.T) {
 	event := registry.Event{Name: "checkout.completed", Version: 1}
 	lock := Lock{
 		Version: LockVersion,
@@ -1234,12 +1350,37 @@ func TestCheckLockRejectsStaleActiveEvent(t *testing.T) {
 		},
 	}
 
+	// Empty registry — event is lock-only (tombstone). CheckLock must NOT error.
 	err := CheckLock(lock, registry.Registry{})
-	if err == nil {
-		t.Fatalf("CheckLock() error = nil, want error")
+	if err != nil {
+		t.Fatalf("CheckLock() error = %v, want nil (tombstone events are allowed)", err)
 	}
-	if !strings.Contains(err.Error(), "events.checkout.completed@1 is not in registry") {
-		t.Fatalf("CheckLock() error = %q", err)
+}
+
+// TestCheckLockAllowsTombstones verifies that CheckLock does not reject events
+// that are present in the lock but absent from the registry (tombstones).
+func TestCheckLockAllowsTombstones(t *testing.T) {
+	event := registry.Event{
+		Name:    "checkout.completed",
+		Version: 1,
+		Properties: map[string]registry.Field{
+			"amount": {Name: "amount"},
+		},
+	}
+	reg := registry.Registry{Events: []registry.Event{event}}
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	// Remove the event from the registry — it becomes a tombstone in the lock.
+	emptyReg := registry.Registry{}
+
+	// CheckLock should not error on the tombstone entry.
+	err = CheckLock(lock, emptyReg)
+	if err != nil {
+		t.Fatalf("CheckLock() error = %v, want nil (tombstones are allowed)", err)
 	}
 }
 
@@ -1254,8 +1395,10 @@ func TestCheckLockDoesNotMutateLock(t *testing.T) {
 	reg := registry.Registry{Events: []registry.Event{event}}
 	lock := Lock{
 		Version: LockVersion,
-		Context: map[string]LockedField{
-			"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+		Domains: map[string]LockedDomain{
+			"user": {Context: map[string]LockedField{
+				"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+			}},
 		},
 		Events: map[string]LockedEvent{
 			eventKey(event): {
@@ -1325,7 +1468,7 @@ func lockedEnvelopeForTest() map[string]LockedField {
 func cloneLockForTest(lock Lock) Lock {
 	clone := Lock{
 		Version: lock.Version,
-		Context: cloneLockedFieldsForTest(lock.Context),
+		Domains: cloneLockedDomainsForTest(lock.Domains),
 		Events:  make(map[string]LockedEvent, len(lock.Events)),
 	}
 	if lock.Events == nil {
@@ -1337,6 +1480,17 @@ func cloneLockForTest(lock Lock) Lock {
 			Properties: cloneLockedFieldsForTest(event.Properties),
 			Reserved:   cloneReservedFieldsForTest(event.Reserved),
 		}
+	}
+	return clone
+}
+
+func cloneLockedDomainsForTest(domains map[string]LockedDomain) map[string]LockedDomain {
+	if domains == nil {
+		return nil
+	}
+	clone := make(map[string]LockedDomain, len(domains))
+	for name, domain := range domains {
+		clone[name] = LockedDomain{Context: cloneLockedFieldsForTest(domain.Context)}
 	}
 	return clone
 }

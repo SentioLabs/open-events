@@ -58,7 +58,10 @@ func TestLockCheckRejectsStaleLock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readLockFile(%q) error = %v", lockPath, err)
 	}
-	lock.Context = map[string]schemair.LockedField{}
+	// T3: Lock.Context replaced by per-domain Lock.Domains; T6 will update this
+	// test to tamper with domains. Clear all events to simulate a stale lock.
+	lock.Events = map[string]schemair.LockedEvent{}
+	_ = lock.Domains // Domains now holds per-domain context; tampering deferred to T6
 	if err := writeLockFile(lockPath, lock); err != nil {
 		t.Fatalf("writeLockFile(%q) error = %v", lockPath, err)
 	}

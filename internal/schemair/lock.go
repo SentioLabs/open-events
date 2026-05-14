@@ -2,8 +2,12 @@ package schemair
 
 type Lock struct {
 	Version int
-	Context map[string]LockedField
+	Domains map[string]LockedDomain
 	Events  map[string]LockedEvent
+}
+
+type LockedDomain struct {
+	Context map[string]LockedField
 }
 
 type LockedEvent struct {
