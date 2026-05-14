@@ -7,7 +7,25 @@ import (
 	"github.com/sentiolabs/open-events/internal/registry"
 )
 
-const LockVersion = 1
+// LockVersion is the schema version of the lock file format produced by this
+// package. Bumped to 2 in the directory-based registry / per-domain context
+// refactor: the top-level `Context` map was reshaped into per-domain
+// `Domains[<name>].Context`. v1 lockfiles cannot be loaded directly; users
+// must regenerate via `openevents lock update`.
+const LockVersion = 2
+
+// versionMismatchError returns a friendly error pointing users at the
+// migration path. It is used from both CheckLock and validateLockForLowering
+// so the message is consistent across the two entrypoints.
+func versionMismatchError(got int) error {
+	if got < LockVersion {
+		return fmt.Errorf("schema lock version %d is from an older OpenEvents release; current version is %d. Run `openevents lock update <registry>` to migrate", got, LockVersion)
+	}
+	if got > LockVersion {
+		return fmt.Errorf("schema lock version %d was written by a newer OpenEvents release than this binary supports (max %d). Upgrade OpenEvents or regenerate the lock", got, LockVersion)
+	}
+	return fmt.Errorf("schema lock version mismatch: got %d want %d", got, LockVersion)
+}
 
 const reservedFieldReasonRemoved = "field removed"
 
@@ -256,7 +274,7 @@ func copyLockedEvents(events map[string]LockedEvent) map[string]LockedEvent {
 
 func CheckLock(lock Lock, reg registry.Registry) error {
 	if lock.Version != LockVersion {
-		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
+		return versionMismatchError(lock.Version)
 	}
 	if err := validateLockNumbers(lock); err != nil {
 		return err

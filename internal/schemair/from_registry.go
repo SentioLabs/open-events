@@ -557,30 +557,30 @@ func lowerObjectToMessageLocked(msgName string, properties map[string]registry.F
 		Fields: make([]Field, 0, len(names)),
 		Enums:  []Enum{},
 	}
-	for i, name := range names {
+	for _, name := range names {
 		field := properties[name]
 		if err := isValidProtoIdentifier(name); err != nil {
 			return nil, fmt.Errorf("%s.%s: %w", path, name, err)
 		}
-		var number int
-		var subLocked LockedField
-		if lockedSubFields != nil {
-			if l, ok := lockedSubFields[name]; ok {
-				number = l.ProtoNumber
-				subLocked = l
-			}
+		// Nested-object subfields MUST have a lock entry. The lock format owns
+		// every wire number, including for nested fields, so wire stability
+		// holds even when the YAML rearranges. There is no fallback path: an
+		// absent lock entry indicates the lock is stale and `lock update` is
+		// required.
+		if lockedSubFields == nil {
+			return nil, fmt.Errorf("%s.%s: missing nested lock entries; run `openevents lock update`", path, name)
 		}
-		if number == 0 {
-			// Backward compat: no lock entry for this subfield — use sorted order.
-			number = i + 1
+		locked, ok := lockedSubFields[name]
+		if !ok {
+			return nil, fmt.Errorf("%s.%s: missing lock entry for nested subfield; run `openevents lock update`", path, name)
 		}
 		var lowered Field
 		var enum *Enum
 		var err error
 		if field.Type == registry.FieldTypeObject && len(field.Properties) > 0 {
-			lowered, enum, _, err = lowerFieldLocked(field, LockedField{ProtoNumber: number, StableID: name, Properties: subLocked.Properties}, path+"."+name)
+			lowered, enum, _, err = lowerFieldLocked(field, LockedField{ProtoNumber: locked.ProtoNumber, StableID: name, Properties: locked.Properties}, path+"."+name)
 		} else {
-			lowered, enum, _, err = lowerField(field, number, path+"."+name)
+			lowered, enum, _, err = lowerField(field, locked.ProtoNumber, path+"."+name)
 		}
 		if err != nil {
 			return nil, err
@@ -593,11 +593,37 @@ func lowerObjectToMessageLocked(msgName string, properties map[string]registry.F
 	return msg, nil
 }
 
-// lowerObjectToMessage builds a nested Message from an object's sub-properties.
-// Proto numbers are assigned sequentially starting at 1, ordered by sorted field name.
-// Enum sub-fields are collected into the nested message's Enums slice.
+// lowerObjectToMessage builds a nested Message using sorted-order proto numbers.
+// It is only used for paths where the lock format does not yet own the numbering:
+// specifically, the field types nested *inside an array's element type* (e.g.
+// the `Thread` message inside `repeated Thread threads`). Top-level object
+// subfields go through lowerObjectToMessageLocked which requires lock entries.
+//
+// TODO: extend the lock to cover array element types so this helper can be
+// deleted entirely and array-of-object element renames cannot silently
+// renumber. Tracked as a follow-up to the D-4 lock-coverage work.
 func lowerObjectToMessage(msgName string, properties map[string]registry.Field, path string) (*Message, error) {
-	return lowerObjectToMessageLocked(msgName, properties, nil, path)
+	names := sortedRegistryFieldNames(properties)
+	msg := &Message{
+		Name:   msgName,
+		Fields: make([]Field, 0, len(names)),
+		Enums:  []Enum{},
+	}
+	for i, name := range names {
+		field := properties[name]
+		if err := isValidProtoIdentifier(name); err != nil {
+			return nil, fmt.Errorf("%s.%s: %w", path, name, err)
+		}
+		lowered, enum, _, err := lowerField(field, i+1, path+"."+name)
+		if err != nil {
+			return nil, err
+		}
+		msg.Fields = append(msg.Fields, lowered)
+		if enum != nil {
+			msg.Enums = append(msg.Enums, *enum)
+		}
+	}
+	return msg, nil
 }
 
 func sortedRegistryFieldNames(fields map[string]registry.Field) []string {
@@ -612,7 +638,7 @@ func sortedRegistryFieldNames(fields map[string]registry.Field) []string {
 func validateLockForLowering(reg registry.Registry, lock Lock) error {
 	// Validate lock version
 	if lock.Version != LockVersion {
-		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
+		return versionMismatchError(lock.Version)
 	}
 
 	// Validate context lock entries per domain

@@ -255,3 +255,28 @@ func TestNestedLockFieldRoundTripViaYAML(t *testing.T) {
 		t.Fatalf("lock check after round-trip: %v, stderr: %s", err, stderr.String())
 	}
 }
+
+// TestDecodeLockFileFriendlyV1Error verifies that a v1 lockfile produces a
+// migration message pointing at `openevents lock update`, not the cryptic
+// "yaml: unmarshal errors: unknown field 'context'" that strict-decode would
+// produce. This is the M-5 follow-up to the D-1 LockVersion bump.
+func TestDecodeLockFileFriendlyV1Error(t *testing.T) {
+	v1Lockfile := []byte(`version: 1
+context:
+  tenant_id:
+    stable_id: tenant_id
+    proto_number: 1
+events: {}
+`)
+
+	_, err := decodeLockFile(v1Lockfile)
+	if err == nil {
+		t.Fatal("decodeLockFile() error = nil, want migration error for v1 lockfile")
+	}
+	if !strings.Contains(err.Error(), "older OpenEvents release") {
+		t.Errorf("error should mention older OpenEvents release; got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "openevents lock update") {
+		t.Errorf("error should point at `openevents lock update`; got: %v", err)
+	}
+}

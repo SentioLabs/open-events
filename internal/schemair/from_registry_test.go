@@ -17,7 +17,7 @@ func TestFromRegistryCarriesGoPackage(t *testing.T) {
 			{Name: "checkout.completed", Version: 1},
 		},
 	}
-	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+	lock := Lock{Version: LockVersion, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
 
 	got, err := FromRegistry(reg, lock)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestFromRegistryRejectsGoPackageWithKeywordAlias(t *testing.T) {
 		},
 		Events: []registry.Event{{Name: "checkout.completed", Version: 1}},
 	}
-	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+	lock := Lock{Version: LockVersion, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
 
 	_, err := FromRegistry(reg, lock)
 	if err == nil {
@@ -58,7 +58,7 @@ func TestFromRegistryRejectsSingleSegmentGoPackage(t *testing.T) {
 		},
 		Events: []registry.Event{{Name: "checkout.completed", Version: 1}},
 	}
-	lock := Lock{Version: 1, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
+	lock := Lock{Version: LockVersion, Events: map[string]LockedEvent{"checkout.completed@1": {}}}
 
 	_, err := FromRegistry(reg, lock)
 	if err == nil {
@@ -149,7 +149,7 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 	}
 
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"storefront": {
 				Context: map[string]LockedField{
@@ -374,7 +374,7 @@ func TestFromRegistryRejectsMissingLockEntries(t *testing.T) {
 	}
 
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		// lock.Domains["storefront"] has no Context entries, so tenant_id is missing.
 		Domains: map[string]LockedDomain{
 			"storefront": {Context: map[string]LockedField{}},
@@ -410,7 +410,7 @@ func TestFromRegistryRejectsMissingPropertyLockEntries(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
 		Events: map[string]LockedEvent{
 			"checkout.completed@1": {
@@ -448,7 +448,7 @@ func TestFromRegistryRejectsUnsupportedArrayShapes(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"checkout.completed@1": {
 				Properties: map[string]LockedField{
@@ -493,7 +493,7 @@ func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
 				Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 			}
 			lock := Lock{
-				Version: 1,
+				Version: LockVersion,
 				Domains: map[string]LockedDomain{
 					"storefront": {
 						Context: map[string]LockedField{
@@ -532,7 +532,7 @@ func TestFromRegistryRejectsStableIDMismatch(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"storefront": {
 				Context: map[string]LockedField{
@@ -570,7 +570,7 @@ func TestFromRegistryRejectsDuplicateNumbers(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"storefront": {
 				Context: map[string]LockedField{
@@ -608,7 +608,7 @@ func TestFromRegistryRejectsReservedFieldNames(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"storefront": {
 				Context: map[string]LockedField{
@@ -645,7 +645,7 @@ func TestFromRegistryRejectsNonASCIIFieldNames(t *testing.T) {
 		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"storefront": {
 				Context: map[string]LockedField{
@@ -674,7 +674,7 @@ func TestFromRegistryRejectsNonASCIINamespace(t *testing.T) {
 		Events:    []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -696,7 +696,7 @@ func TestFromRegistryRejectsMessageNameCollisions(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"a.b_c@1": {Properties: map[string]LockedField{}},
 			"a_b.c@1": {Properties: map[string]LockedField{}},
@@ -725,7 +725,7 @@ func TestFromRegistryRejectsMixedVersions(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 			"test@2": {Properties: map[string]LockedField{}},
@@ -747,7 +747,7 @@ func TestFromRegistryRejectsNoEvents(t *testing.T) {
 		Context:   map[string]registry.Field{},
 		Events:    []registry.Event{},
 	}
-	lock := Lock{Version: 1}
+	lock := Lock{Version: LockVersion}
 
 	_, err := FromRegistry(reg, lock)
 	if err == nil {
@@ -771,7 +771,7 @@ func TestFromRegistryRejectsEmptyEventName(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"@1": {
 				Properties: map[string]LockedField{},
@@ -801,7 +801,7 @@ func TestFromRegistryRejectsUnrenderableEventName(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"---@1": {
 				Properties: map[string]LockedField{},
@@ -848,7 +848,7 @@ func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"checkout": {
 				Context: map[string]LockedField{
@@ -905,7 +905,7 @@ func TestFromRegistryRejectsContextEnumTypeNameCollision(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"checkout": {
 				Context: map[string]LockedField{
@@ -954,7 +954,7 @@ func TestFromRegistryRejectsPropertiesEnumTypeNameCollision(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{
@@ -999,7 +999,7 @@ func TestFromRegistryRejectsLeadingUnderscoreInFieldName(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"checkout": {
 				Context: map[string]LockedField{
@@ -1046,7 +1046,7 @@ func TestFromRegistryRejectsInvalidEnvelopeProtoNumbers(t *testing.T) {
 				}},
 			}
 			lock := Lock{
-				Version: 1,
+				Version: LockVersion,
 				Events: map[string]LockedEvent{
 					"test.event@1": {
 						Envelope: map[string]LockedField{
@@ -1079,7 +1079,7 @@ func TestFromRegistryRejectsEnvelopeProtoNumberMismatch(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Envelope: map[string]LockedField{
@@ -1110,7 +1110,7 @@ func TestFromRegistryRejectsInvalidEnvelopeStableID(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Envelope: map[string]LockedField{
@@ -1141,7 +1141,7 @@ func TestFromRegistryRejectsUnexpectedEnvelopeKey(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Envelope: map[string]LockedField{
@@ -1175,7 +1175,7 @@ func TestFromRegistryRejectsDuplicateEnvelopeProtoNumbers(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Envelope: map[string]LockedField{
@@ -1216,7 +1216,7 @@ func TestFromRegistryAllowsMissingEnvelopeEntries(t *testing.T) {
 		}},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				// No envelope entries at all
@@ -1264,7 +1264,7 @@ func TestFromRegistryRejectsContextEnumZeroValueCollisionBetweenEnums(t *testing
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"checkout": {
 				Context: map[string]LockedField{
@@ -1325,7 +1325,7 @@ func TestFromRegistryRejectsContextEnumAuthoredValueMatchesOtherEnumZeroValue(t 
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Domains: map[string]LockedDomain{
 			"checkout": {
 				Context: map[string]LockedField{
@@ -1375,7 +1375,7 @@ func TestFromRegistryRejectsPropertiesEnumValueCollisionWithZeroValue(t *testing
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{
@@ -1449,7 +1449,7 @@ func TestFromRegistryRejectsPropertiesEnumSameNameCollision(t *testing.T) {
 		},
 	}
 	lock := Lock{
-		Version: 1,
+		Version: LockVersion,
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{

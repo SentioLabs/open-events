@@ -136,6 +136,18 @@ func readLockFile(path string) (schemair.Lock, error) {
 }
 
 func decodeLockFile(content []byte) (schemair.Lock, error) {
+	// First pass: peek at the version field with a permissive decoder so we
+	// can emit a friendly migration error before the strict decoder fails
+	// with an opaque "unknown field" message on lockfiles whose top-level
+	// shape changed between versions (e.g. v1 had `context:`, v2 has
+	// `domains:`).
+	var versionPeek struct {
+		Version int `yaml:"version"`
+	}
+	if err := yaml.Unmarshal(content, &versionPeek); err == nil && versionPeek.Version != 0 && versionPeek.Version != schemair.LockVersion {
+		return schemair.Lock{}, lockMigrationError(versionPeek.Version)
+	}
+
 	var file lockFile
 	decoder := yaml.NewDecoder(bytes.NewReader(content))
 	decoder.KnownFields(true)
@@ -143,6 +155,13 @@ func decodeLockFile(content []byte) (schemair.Lock, error) {
 		return schemair.Lock{}, err
 	}
 	return file.toSchemaLock(), nil
+}
+
+func lockMigrationError(got int) error {
+	if got < schemair.LockVersion {
+		return fmt.Errorf("schema lock version %d is from an older OpenEvents release; current version is %d. Run `openevents lock update <registry>` to migrate", got, schemair.LockVersion)
+	}
+	return fmt.Errorf("schema lock version %d was written by a newer OpenEvents release than this binary supports (max %d). Upgrade OpenEvents or regenerate the lock", got, schemair.LockVersion)
 }
 
 func writeLockFile(path string, lock schemair.Lock) error {

@@ -674,8 +674,28 @@ func TestCheckLockRejectsVersionMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatalf("CheckLock() error = nil, want version mismatch error")
 	}
-	if !strings.Contains(err.Error(), "schema lock version") || !strings.Contains(err.Error(), "want 1") {
-		t.Fatalf("CheckLock() error = %q, want version mismatch", err)
+	if !strings.Contains(err.Error(), "schema lock version") || !strings.Contains(err.Error(), "newer OpenEvents release") {
+		t.Fatalf("CheckLock() error = %q, want version-mismatch (newer) error", err)
+	}
+}
+
+// TestCheckLockRejectsV1LockOnV2Binary covers the migration path: a lockfile
+// written by a previous OpenEvents release (LockVersion=1) must be rejected
+// with a friendly migration message pointing users at `openevents lock update`.
+func TestCheckLockRejectsV1LockOnV2Binary(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{"tenant_id": {Name: "tenant_id"}})
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+	lock.Version = 1 // simulate an old lockfile
+
+	err = CheckLock(lock, reg)
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want version-1 migration error")
+	}
+	if !strings.Contains(err.Error(), "older OpenEvents release") || !strings.Contains(err.Error(), "openevents lock update") {
+		t.Fatalf("CheckLock() error = %q, want migration hint", err)
 	}
 }
 
