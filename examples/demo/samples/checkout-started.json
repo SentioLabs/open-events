@@ -1,0 +1,12 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-100",
+    "session_id": "s-abc",
+    "platform": "WEB"
+  },
+  "cart_id": "11111111-1111-1111-1111-111111111111",
+  "item_count": 3,
+  "subtotal_cents": 4999,
+  "currency": "USD"
+}

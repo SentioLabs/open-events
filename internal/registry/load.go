@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -197,7 +198,7 @@ func normalizeYAML(path string, in registryYAML) (Registry, Diagnostics) {
 			Description: event.Description,
 			Owner:       event.Owner,
 			Producer:    event.Producer,
-			Sources:     append([]string(nil), event.Sources...),
+			Sources:     slices.Clone(event.Sources),
 			Destination: Destination{
 				Queue:          event.Destination.Queue,
 				SnowflakeTable: event.Destination.SnowflakeTable,
@@ -228,8 +229,8 @@ func normalizeField(name string, in fieldYAML) Field {
 		PII:         in.PII,
 		Deprecated:  deprecated,
 		Default:     in.Default,
-		Examples:    append([]any(nil), in.Examples...),
-		Values:      append([]string(nil), in.Values...),
+		Examples:    slices.Clone(in.Examples),
+		Values:      slices.Clone(in.Values),
 		Properties:  map[string]Field{},
 	}
 

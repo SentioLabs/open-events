@@ -1,0 +1,11 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-200",
+    "session_id": "s-xyz",
+    "platform": "IOS"
+  },
+  "query": "blue running shoes",
+  "result_count": 42,
+  "filters": ["color:blue", "category:running"]
+}

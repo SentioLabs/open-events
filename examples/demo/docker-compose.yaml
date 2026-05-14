@@ -1,0 +1,16 @@
+services:
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      DEBUG: "0"
+      PERSISTENCE: "0"
+    volumes:
+      - "./_build/localstack:/var/lib/localstack"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:4566/_localstack/health"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

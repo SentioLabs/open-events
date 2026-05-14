@@ -36,12 +36,16 @@ ok: registry valid (2 events, 3 context fields)
 
 ## Demo
 
-A larger documented example lives in `examples/demo/`.
+A larger end-to-end example — a Go API publishing to SQS into a Python consumer
+that lands events in Parquet — lives in [`examples/demo/`](./examples/demo/).
+See [`examples/demo/GUIDE.md`](./examples/demo/GUIDE.md) for an annotated
+walkthrough; [`examples/demo/README.md`](./examples/demo/README.md) is the
+runbook.
 
 Validate it from the repository root:
 
 ```bash
-go run ./cmd/openevents validate ./examples/demo
+go run ./cmd/openevents validate ./examples/demo/registry
 ```
 
 Expected output:
@@ -67,12 +71,12 @@ bash scripts/install-buf.sh
 Validate the demo registry and committed lock, then generate protobuf output:
 
 ```bash
-go run ./cmd/openevents validate ./examples/demo
-go run ./cmd/openevents lock check ./examples/demo
-go run ./cmd/openevents generate proto ./examples/demo ./_build/demo-proto
+go run ./cmd/openevents validate ./examples/demo/registry
+go run ./cmd/openevents lock check ./examples/demo/registry
+go run ./cmd/openevents generate proto ./examples/demo/registry ./_build/demo-proto
 ```
 
-Use `go run ./cmd/openevents lock update ./examples/demo` only after an approved schema change.
+Use `go run ./cmd/openevents lock update ./examples/demo/registry` only after an approved schema change.
 
 Run Buf against the generated output:
 
