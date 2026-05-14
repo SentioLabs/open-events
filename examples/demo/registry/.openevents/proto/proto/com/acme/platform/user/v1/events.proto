@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package com.acme.platform.user.v1;
+option go_package = "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user;user";
+
+import "google/protobuf/timestamp.proto";
+import "com/acme/platform/common/v1/common.proto";
+
+message UserContext {
+  optional Platform platform = 1;
+  optional string session_id = 2;
+  optional string tenant_id = 3;
+  optional string user_id = 4;
+
+  enum Platform {
+    PLATFORM_UNSPECIFIED = 0;
+    PLATFORM_IOS = 1;
+    PLATFORM_ANDROID = 2;
+    PLATFORM_WEB = 3;
+  }
+}
+
+// User authenticated into their account.
+message UserAuthLoginV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserAuthLoginV1Properties properties = 7;
+}
+
+message UserAuthLoginV1Properties {
+  optional Method method = 1;
+  optional bool success = 2;
+
+  enum Method {
+    METHOD_UNSPECIFIED = 0;
+    METHOD_EMAIL = 1;
+    METHOD_GOOGLE = 2;
+    METHOD_APPLE = 3;
+  }
+}
+
+// User session ended.
+message UserAuthLogoutV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserAuthLogoutV1Properties properties = 7;
+}
+
+message UserAuthLogoutV1Properties {
+  optional int64 duration_seconds = 1;
+}
+
+// User completed account signup.
+message UserAuthSignupV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserAuthSignupV1Properties properties = 7;
+}
+
+message UserAuthSignupV1Properties {
+  optional Method method = 1;
+  optional string plan = 2;
+
+  enum Method {
+    METHOD_UNSPECIFIED = 0;
+    METHOD_EMAIL = 1;
+    METHOD_GOOGLE = 2;
+    METHOD_APPLE = 3;
+  }
+}
+
+// User entered the checkout flow.
+message UserCartCheckoutV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserCartCheckoutV1Properties properties = 7;
+}
+
+message UserCartCheckoutV1Properties {
+  optional string cart_id = 1;
+  optional Currency currency = 2;
+  optional int64 item_count = 3;
+  optional int64 subtotal_cents = 4;
+
+  enum Currency {
+    CURRENCY_UNSPECIFIED = 0;
+    CURRENCY_USD = 1;
+    CURRENCY_EUR = 2;
+    CURRENCY_GBP = 3;
+  }
+}
+
+// User added an item to their cart.
+message UserCartItemAddedV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserCartItemAddedV1Properties properties = 7;
+}
+
+message UserCartItemAddedV1Properties {
+  optional string cart_id = 1;
+  optional int64 quantity = 2;
+  optional string sku = 3;
+}
+
+// User completed a purchase and payment was accepted.
+message UserCartPurchaseV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  UserContext context = 6;
+  UserCartPurchaseV1Properties properties = 7;
+}
+
+message UserCartPurchaseV1Properties {
+  optional string cart_id = 1;
+  optional string coupon_code = 2;
+  optional string order_id = 3;
+  optional PaymentMethod payment_method = 4;
+  optional int64 total_cents = 5;
+
+  enum PaymentMethod {
+    PAYMENT_METHOD_UNSPECIFIED = 0;
+    PAYMENT_METHOD_CARD = 1;
+    PAYMENT_METHOD_APPLE_PAY = 2;
+    PAYMENT_METHOD_GOOGLE_PAY = 3;
+  }
+}

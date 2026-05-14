@@ -63,7 +63,7 @@ func Render(reg schemair.Registry, outDir string) error {
 		// Emit per-domain events.proto.
 		for _, ds := range reg.DomainSpecs {
 			domainProtoPath := filepath.Join(protoRoot, filepath.FromSlash(nsPath), ds.Name, "v1", "events.proto")
-			domainBytes, err := RenderDomainProto(reg.Namespace, ds)
+			domainBytes, err := RenderDomainProto(reg.Namespace, reg.GoPackage, ds)
 			if err != nil {
 				return fmt.Errorf("render %s/v1/events.proto: %w", ds.Name, err)
 			}
@@ -123,7 +123,17 @@ func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
 
 	var b strings.Builder
 	b.WriteString("syntax = \"proto3\";\n\n")
-	fmt.Fprintf(&b, "package %s;\n\n", pkg)
+	fmt.Fprintf(&b, "package %s;\n", pkg)
+
+	// Emit go_package option when a Go import path is configured.
+	// Proto types live under a "pb" subdirectory to avoid collisions with
+	// the JSON-binding types generated in the parent eventmap package.
+	if reg.GoPackage != "" {
+		goImport := reg.GoPackage + "/pb/common"
+		alias := "common"
+		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(goImport+";"+alias))
+	}
+	b.WriteString("\n")
 
 	if err := renderMessage(&b, reg.CommonSpec.Client); err != nil {
 		return nil, err
@@ -134,7 +144,9 @@ func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
 }
 
 // RenderDomainProto renders the events.proto for a single domain.
-func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error) {
+// goPackage is the Go import-path base (e.g. "github.com/acme/foo/eventmap");
+// pass "" to omit the go_package option.
+func RenderDomainProto(namespace string, goPackage string, ds schemair.DomainSpec) ([]byte, error) {
 	nsPath := namespaceToPath(namespace)
 	pkg := namespace + "." + ds.Name + ".v1"
 	commonImport := nsPath + "/common/v1/common.proto"
@@ -147,7 +159,16 @@ func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error)
 
 	var b strings.Builder
 	b.WriteString("syntax = \"proto3\";\n\n")
-	fmt.Fprintf(&b, "package %s;\n\n", pkg)
+	fmt.Fprintf(&b, "package %s;\n", pkg)
+
+	// Emit go_package option when a Go import path is configured.
+	// Proto types live under a "pb" subdirectory to avoid collisions with
+	// the JSON-binding types generated in the parent eventmap package.
+	if goPackage != "" {
+		goImport := goPackage + "/pb/" + ds.Name
+		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(goImport+";"+ds.Name))
+	}
+	b.WriteString("\n")
 	if usesTimestamp {
 		b.WriteString("import \"google/protobuf/timestamp.proto\";\n")
 	}

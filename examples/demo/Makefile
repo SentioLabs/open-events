@@ -3,7 +3,8 @@ SHELL := /bin/bash
 
 REPO_ROOT       := $(abspath ../..)
 REGISTRY        := ./examples/demo/registry
-PROTO_OUT       := $(REPO_ROOT)/_build/demo-proto
+PROTO_ROOT      := $(REPO_ROOT)/examples/demo/registry/.openevents/proto
+API_EVENTMAP    := $(REPO_ROOT)/examples/demo/services/api/eventmap
 PARQUET_OUT     := $(REPO_ROOT)/_build/demo-output
 QUEUE_NAME      := storefront-events
 QUEUE_URL       := http://localhost:4566/000000000000/$(QUEUE_NAME)
@@ -21,14 +22,11 @@ export OPENEVENTS_OUTPUT_DIR ?= $(PARQUET_OUT)
 gen:
 	cd $(REPO_ROOT) && go run ./cmd/openevents validate $(REGISTRY)
 	cd $(REPO_ROOT) && go run ./cmd/openevents lock check $(REGISTRY)
-	cd $(REPO_ROOT) && go run ./cmd/openevents generate proto $(REGISTRY) ./_build/demo-proto
+	rm -rf $(PROTO_ROOT)
+	cd $(REPO_ROOT) && go run ./cmd/openevents generate $(REGISTRY)
 	cd $(REPO_ROOT) && bash scripts/install-buf.sh
-	cd $(PROTO_OUT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate .
-	bash scripts/postgen.sh $(PROTO_OUT)/gen/python
-	cd $(REPO_ROOT) && go run ./cmd/openevents generate constants $(REGISTRY) \
-		--go-out=examples/demo/services/api/eventmap/event_names.go \
-		--go-package=eventmap \
-		--python-out=examples/demo/services/consumer/src/consumer/event_names.py
+	cd $(PROTO_ROOT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate .
+	bash scripts/postgen.sh $(PROTO_ROOT)/gen $(API_EVENTMAP)
 
 up:
 	docker compose up -d localstack

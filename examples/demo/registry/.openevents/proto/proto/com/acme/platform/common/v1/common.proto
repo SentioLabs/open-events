@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package com.acme.platform.common.v1;
+option go_package = "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common;common";
+
+message Client {
+  optional string name = 1;
+  optional string version = 2;
+}

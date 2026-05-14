@@ -8,26 +8,10 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
+	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/device"
+	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/user"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/publisher"
 )
-
-// envelopeMessage is the subset of the generated proto envelope that the
-// handler relies on for the response body. CheckoutStartedV1, CheckoutCompletedV1,
-// and SearchPerformedV1 all satisfy this interface via their generated getters.
-type envelopeMessage interface {
-	proto.Message
-	GetEventId() string
-}
-
-// buildFunc decodes the request body, validates it, and returns the proto
-// message ready to publish. If fieldErrs is non-empty, the handler returns 400.
-type buildFunc func(c echo.Context) (msg envelopeMessage, fieldErrs []eventmap.FieldError, err error)
-
-type route struct {
-	path      string
-	eventName string
-	build     buildFunc
-}
 
 type errorResponse struct {
 	Error string `json:"error"`
@@ -53,55 +37,15 @@ func New(pub publisher.Publisher, queueURL string) *echo.Echo {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	for _, r := range routes() {
-		e.POST(r.path, handle(pub, queueURL, r.eventName, r.build))
+	routes := append(user.Routes(), device.Routes()...)
+	for _, r := range routes {
+		e.POST(r.Path, handle(pub, queueURL, r.EventName, r.Build))
 	}
 
 	return e
 }
 
-func routes() []route {
-	return []route{
-		{
-			path:      "/v1/events/checkout-started",
-			eventName: eventmap.CheckoutStartedV1,
-			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-				return bindBuild[eventmap.CheckoutStartedRequest](c, func(r eventmap.CheckoutStartedRequest) envelopeMessage { return r.ToProto() })
-			},
-		},
-		{
-			path:      "/v1/events/checkout-completed",
-			eventName: eventmap.CheckoutCompletedV1,
-			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-				return bindBuild[eventmap.CheckoutCompletedRequest](c, func(r eventmap.CheckoutCompletedRequest) envelopeMessage { return r.ToProto() })
-			},
-		},
-		{
-			path:      "/v1/events/search-performed",
-			eventName: eventmap.SearchPerformedV1,
-			build: func(c echo.Context) (envelopeMessage, []eventmap.FieldError, error) {
-				return bindBuild[eventmap.SearchPerformedRequest](c, func(r eventmap.SearchPerformedRequest) envelopeMessage { return r.ToProto() })
-			},
-		},
-	}
-}
-
-type validator interface {
-	Validate() []eventmap.FieldError
-}
-
-func bindBuild[T validator](c echo.Context, toProto func(T) envelopeMessage) (envelopeMessage, []eventmap.FieldError, error) {
-	var req T
-	if err := c.Bind(&req); err != nil {
-		return nil, nil, err
-	}
-	if errs := req.Validate(); len(errs) > 0 {
-		return nil, errs, nil
-	}
-	return toProto(req), nil, nil
-}
-
-func handle(pub publisher.Publisher, queueURL, eventName string, build buildFunc) echo.HandlerFunc {
+func handle(pub publisher.Publisher, queueURL, eventName string, build eventmap.BuildFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		msg, fieldErrs, err := build(c)
 		if err != nil {

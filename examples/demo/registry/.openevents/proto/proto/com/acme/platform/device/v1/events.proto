@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package com.acme.platform.device.v1;
+option go_package = "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device;device";
+
+import "google/protobuf/timestamp.proto";
+import "com/acme/platform/common/v1/common.proto";
+
+message DeviceContext {
+  optional string device_id = 1;
+  optional string firmware_version = 2;
+  optional string serial_number = 3;
+  optional string tenant_id = 4;
+}
+
+// Per-thread RTOS stack usage snapshot from the device.
+message DeviceDiagnosticsStackUsageV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceDiagnosticsStackUsageV1Properties properties = 7;
+}
+
+message DeviceDiagnosticsStackUsageV1Properties {
+  optional int64 highest_usage_percent = 1;
+  optional string highest_usage_thread = 2;
+  optional int64 thread_count = 3;
+  repeated Threads threads = 4;
+
+  message Threads {
+    optional string name = 1;
+    optional int64 priority = 2;
+    optional int64 stack_size_bytes = 3;
+    optional int64 stack_used_bytes = 4;
+    optional State state = 5;
+    optional int64 usage_percent = 6;
+    enum State {
+      STATE_UNSPECIFIED = 0;
+      STATE_RUNNING = 1;
+      STATE_READY = 2;
+      STATE_PENDING = 3;
+      STATE_SUSPENDED = 4;
+      STATE_DEAD = 5;
+    }
+  }
+}
+
+// Device experienced a drop event detected by accelerometer.
+message DeviceIncidentDropV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceIncidentDropV1Properties properties = 7;
+}
+
+message DeviceIncidentDropV1Properties {
+  optional Axis axis = 1;
+  optional int64 duration_ms = 2;
+  optional double peak_acceleration_g = 3;
+
+  enum Axis {
+    AXIS_UNSPECIFIED = 0;
+    AXIS_X = 1;
+    AXIS_Y = 2;
+    AXIS_Z = 3;
+  }
+}
+
+// Device temperature exceeded a configured threshold.
+message DeviceIncidentTemperatureV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceIncidentTemperatureV1Properties properties = 7;
+}
+
+message DeviceIncidentTemperatureV1Properties {
+  optional BreachType breach_type = 1;
+  optional double degrees_c = 2;
+  optional double threshold_c = 3;
+
+  enum BreachType {
+    BREACH_TYPE_UNSPECIFIED = 0;
+    BREACH_TYPE_OVER = 1;
+    BREACH_TYPE_UNDER = 2;
+  }
+}
+
+// Sensor calibration data snapshot from the device.
+message DeviceInfoCalibrationV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceInfoCalibrationV1Properties properties = 7;
+}
+
+message DeviceInfoCalibrationV1Properties {
+  optional double concentration = 1;
+  optional int64 integral = 2;
+  optional google.protobuf.Timestamp timestamp = 3;
+}
+
+// Hardware configuration read from device EEPROM at startup.
+message DeviceInfoHardwareV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceInfoHardwareV1Properties properties = 7;
+}
+
+message DeviceInfoHardwareV1Properties {
+  EepromFormatVersion eeprom_format_version = 1;
+  optional string fuel_cell_lot_number = 2;
+  optional string fuel_cell_vendor = 3;
+  optional google.protobuf.Timestamp manufacturing_timestamp = 4;
+  ModulePcbVersion module_pcb_version = 5;
+  optional SensorType sensor_type = 6;
+  optional string unique_id = 7;
+
+  enum SensorType {
+    SENSOR_TYPE_UNSPECIFIED = 0;
+    SENSOR_TYPE_CO = 1;
+    SENSOR_TYPE_ALCOHOL = 2;
+    SENSOR_TYPE_OXYGEN = 3;
+    SENSOR_TYPE_FUEL_CELL = 4;
+  }
+
+  message EepromFormatVersion {
+    optional int64 major = 1;
+    optional int64 minor = 2;
+  }
+
+  message ModulePcbVersion {
+    optional int64 major = 1;
+    optional int64 minor = 2;
+  }
+}
+
+// Software version information reported by the device at startup.
+message DeviceInfoSoftwareV1 {
+  string event_name = 1;
+  int64 event_version = 2;
+  string event_id = 3;
+  google.protobuf.Timestamp event_ts = 4;
+  com.acme.platform.common.v1.Client client = 5;
+  DeviceContext context = 6;
+  DeviceInfoSoftwareV1Properties properties = 7;
+}
+
+message DeviceInfoSoftwareV1Properties {
+  optional int64 pcba_hw_manufactured_timestamp_ms = 11;
+  optional string pcba_hw_version = 12;
+  optional string product_type = 13;
+  optional string serial_number = 14;
+  optional int64 unique_id = 15;
+  Versions versions = 18;
+
+  message Versions {
+    optional string app_git_sha = 1;
+    optional string app_semantic_version = 2;
+    optional int64 bootloader_build_timestamp = 3;
+    optional string bootloader_git_sha = 4;
+    optional string build_type = 5;
+    optional string compile_time = 6;
+    optional string compiled_by = 7;
+    optional string compiled_on_os = 8;
+    optional string compiler_version = 9;
+    optional string hw_platform = 10;
+    optional string zephyr_kernel_git_sha = 11;
+    optional string zephyr_kernel_version = 12;
+  }
+}

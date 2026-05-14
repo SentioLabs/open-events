@@ -2,6 +2,7 @@ package schemair
 
 type Registry struct {
 	Namespace   string
+	GoPackage   string // Go import-path base from registry Package.Go
 	Files       []File
 	DomainSpecs []DomainSpec
 	CommonSpec  CommonSpec

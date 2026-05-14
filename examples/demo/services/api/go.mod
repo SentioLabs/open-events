@@ -2,11 +2,9 @@ module github.com/sentiolabs/open-events/examples/demo/services/api
 
 go 1.25.0
 
-replace github.com/acme/storefront/events => ../../../../_build/demo-proto/gen/go/com/acme/storefront/v1
-
 require (
-	github.com/acme/storefront/events v0.0.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
+	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.2
@@ -14,7 +12,6 @@ require (
 )
 
 require (
-	github.com/aws/aws-sdk-go-v2/config v1.32.17 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.16 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23 // indirect

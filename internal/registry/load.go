@@ -43,6 +43,7 @@ func Load(path string) (Registry, Diagnostics) {
 		Domains: map[string]Domain{},
 		Codegen: Codegen{
 			Languages: root.Codegen.Languages,
+			Configs:   normalizeCodegenConfigs(root.Codegen.Configs),
 		},
 	}
 
@@ -257,6 +258,25 @@ func dirHasYAMLFiles(dir string) bool {
 		return nil
 	})
 	return found
+}
+
+// normalizeCodegenConfigs converts the raw map[string]interface{} codegen configs
+// to the typed map[string]map[string]any used by the registry model.
+func normalizeCodegenConfigs(raw map[string]interface{}) map[string]map[string]any {
+	if raw == nil {
+		return nil
+	}
+	out := make(map[string]map[string]any, len(raw))
+	for lang, v := range raw {
+		if m, ok := v.(map[string]interface{}); ok {
+			typed := make(map[string]any, len(m))
+			for k, val := range m {
+				typed[k] = val
+			}
+			out[lang] = typed
+		}
+	}
+	return out
 }
 
 // normalizeOwners converts ownerYAML slice to Owner slice.

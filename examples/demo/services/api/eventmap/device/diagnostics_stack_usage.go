@@ -1,0 +1,80 @@
+package device
+
+import (
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/google/uuid"
+	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
+	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
+	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
+)
+
+// ThreadRequest is the wire shape for a single thread in the stack usage snapshot.
+type ThreadRequest struct {
+	Name           string `json:"name"`
+	StackSizeBytes int64  `json:"stack_size_bytes"`
+	StackUsedBytes int64  `json:"stack_used_bytes"`
+	UsagePercent   int64  `json:"usage_percent"`
+	Priority       int64  `json:"priority"`
+	State          string `json:"state"` // "running"|"ready"|"pending"|"suspended"|"dead"
+}
+
+// DiagnosticsStackUsageRequest is the JSON body for POST /v1/events/device/diagnostics/stack_usage.
+type DiagnosticsStackUsageRequest struct {
+	Context             DeviceContext   `json:"context"`
+	ThreadCount         int64           `json:"thread_count"`
+	HighestUsagePercent int64           `json:"highest_usage_percent"`
+	HighestUsageThread  string          `json:"highest_usage_thread"`
+	Threads             []ThreadRequest `json:"threads"`
+}
+
+var threadStateByName = map[string]devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_State{
+	"running":   devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_RUNNING,
+	"ready":     devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_READY,
+	"pending":   devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_PENDING,
+	"suspended": devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_SUSPENDED,
+	"dead":      devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_DEAD,
+}
+
+// Validate returns field-level errors for the request, empty on success.
+func (r DiagnosticsStackUsageRequest) Validate() []eventmap.FieldError {
+	errs := validateContext(r.Context)
+	if r.HighestUsageThread == "" {
+		errs = append(errs, eventmap.FieldError{Field: "highest_usage_thread", Message: "required"})
+	}
+	return errs
+}
+
+// ToProto builds a DeviceDiagnosticsStackUsageV1 protobuf with a fresh envelope.
+func (r DiagnosticsStackUsageRequest) ToProto() eventmap.EnvelopeMessage {
+	threads := make([]*devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads, 0, len(r.Threads))
+	for _, t := range r.Threads {
+		state := devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads_STATE_UNSPECIFIED
+		if s, ok := threadStateByName[t.State]; ok {
+			state = s
+		}
+		threads = append(threads, &devicepb.DeviceDiagnosticsStackUsageV1Properties_Threads{
+			Name:           proto.String(t.Name),
+			StackSizeBytes: proto.Int64(t.StackSizeBytes),
+			StackUsedBytes: proto.Int64(t.StackUsedBytes),
+			UsagePercent:   proto.Int64(t.UsagePercent),
+			Priority:       proto.Int64(t.Priority),
+			State:          state.Enum(),
+		})
+	}
+	return &devicepb.DeviceDiagnosticsStackUsageV1{
+		EventName:    DiagnosticsStackUsageV1,
+		EventVersion: 1,
+		EventId:      uuid.NewString(),
+		EventTs:      timestamppb.Now(),
+		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
+		Context:      contextToProto(r.Context),
+		Properties: &devicepb.DeviceDiagnosticsStackUsageV1Properties{
+			ThreadCount:         proto.Int64(r.ThreadCount),
+			HighestUsagePercent: proto.Int64(r.HighestUsagePercent),
+			HighestUsageThread:  proto.String(r.HighestUsageThread),
+			Threads:             threads,
+		},
+	}
+}

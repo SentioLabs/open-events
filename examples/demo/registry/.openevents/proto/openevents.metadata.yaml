@@ -1,0 +1,1074 @@
+version: 1
+backend: protobuf
+namespace: com.acme.platform
+files:
+  - path: proto/com/acme/platform/v1/events.proto
+    package: com.acme.platform.v1
+    messages:
+      - name: Client
+        fields:
+          - name: name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+          - name: version
+            number: 2
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+        enums: []
+      - name: DeviceDiagnosticsStackUsageV1
+        description: Per-thread RTOS stack usage snapshot from the device.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceDiagnosticsStackUsageV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceDiagnosticsStackUsageV1Properties
+        fields:
+          - name: highest_usage_percent
+            number: 1
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: highest_usage_thread
+            number: 2
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+          - name: thread_count
+            number: 3
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: threads
+            number: 4
+            kind: message
+            type: Threads
+            repeated: true
+            optional: false
+            required: true
+        enums: []
+      - name: DeviceIncidentDropV1
+        description: Device experienced a drop event detected by accelerometer.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceIncidentDropV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceIncidentDropV1Properties
+        fields:
+          - name: axis
+            number: 1
+            kind: enum
+            type: Axis
+            repeated: false
+            optional: true
+            required: true
+          - name: duration_ms
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: peak_acceleration_g
+            number: 3
+            kind: scalar
+            type: number
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: Axis
+            values:
+              - name: AXIS_X
+                original: x
+                number: 1
+              - name: AXIS_Y
+                original: "y"
+                number: 2
+              - name: AXIS_Z
+                original: z
+                number: 3
+      - name: DeviceIncidentTemperatureV1
+        description: Device temperature exceeded a configured threshold.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceIncidentTemperatureV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceIncidentTemperatureV1Properties
+        fields:
+          - name: breach_type
+            number: 1
+            kind: enum
+            type: BreachType
+            repeated: false
+            optional: true
+            required: true
+          - name: degrees_c
+            number: 2
+            kind: scalar
+            type: number
+            repeated: false
+            optional: true
+            required: true
+          - name: threshold_c
+            number: 3
+            kind: scalar
+            type: number
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: BreachType
+            values:
+              - name: BREACH_TYPE_OVER
+                original: over
+                number: 1
+              - name: BREACH_TYPE_UNDER
+                original: under
+                number: 2
+      - name: DeviceInfoCalibrationV1
+        description: Sensor calibration data snapshot from the device.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceInfoCalibrationV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceInfoCalibrationV1Properties
+        fields:
+          - name: concentration
+            number: 1
+            kind: scalar
+            type: number
+            repeated: false
+            optional: true
+            required: true
+          - name: integral
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: timestamp
+            number: 3
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: true
+            required: true
+        enums: []
+      - name: DeviceInfoHardwareV1
+        description: Hardware configuration read from device EEPROM at startup.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceInfoHardwareV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceInfoHardwareV1Properties
+        fields:
+          - name: eeprom_format_version
+            number: 1
+            kind: message
+            type: EepromFormatVersion
+            repeated: false
+            optional: true
+            required: true
+          - name: fuel_cell_lot_number
+            number: 2
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+          - name: fuel_cell_vendor
+            number: 3
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+          - name: manufacturing_timestamp
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: true
+            required: true
+          - name: module_pcb_version
+            number: 5
+            kind: message
+            type: ModulePcbVersion
+            repeated: false
+            optional: true
+            required: true
+          - name: sensor_type
+            number: 6
+            kind: enum
+            type: SensorType
+            repeated: false
+            optional: true
+            required: true
+          - name: unique_id
+            number: 7
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: SensorType
+            values:
+              - name: SENSOR_TYPE_CO
+                original: co
+                number: 1
+              - name: SENSOR_TYPE_ALCOHOL
+                original: alcohol
+                number: 2
+              - name: SENSOR_TYPE_OXYGEN
+                original: oxygen
+                number: 3
+              - name: SENSOR_TYPE_FUEL_CELL
+                original: fuel_cell
+                number: 4
+      - name: DeviceInfoSoftwareV1
+        description: Software version information reported by the device at startup.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: DeviceContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: DeviceInfoSoftwareV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: DeviceInfoSoftwareV1Properties
+        fields:
+          - name: pcba_hw_manufactured_timestamp_ms
+            number: 11
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: pcba_hw_version
+            number: 12
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+          - name: product_type
+            number: 13
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+          - name: serial_number
+            number: 14
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+          - name: unique_id
+            number: 15
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: versions
+            number: 18
+            kind: message
+            type: Versions
+            repeated: false
+            optional: true
+            required: true
+        enums: []
+      - name: UserAuthLoginV1
+        description: User authenticated into their account.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserAuthLoginV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserAuthLoginV1Properties
+        fields:
+          - name: method
+            number: 1
+            kind: enum
+            type: Method
+            repeated: false
+            optional: true
+            required: true
+          - name: success
+            number: 2
+            kind: scalar
+            type: boolean
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: Method
+            values:
+              - name: METHOD_EMAIL
+                original: email
+                number: 1
+              - name: METHOD_GOOGLE
+                original: google
+                number: 2
+              - name: METHOD_APPLE
+                original: apple
+                number: 3
+      - name: UserAuthLogoutV1
+        description: User session ended.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserAuthLogoutV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserAuthLogoutV1Properties
+        fields:
+          - name: duration_seconds
+            number: 1
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+        enums: []
+      - name: UserAuthSignupV1
+        description: User completed account signup.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserAuthSignupV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserAuthSignupV1Properties
+        fields:
+          - name: method
+            number: 1
+            kind: enum
+            type: Method
+            repeated: false
+            optional: true
+            required: true
+          - name: plan
+            number: 2
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+        enums:
+          - name: Method
+            values:
+              - name: METHOD_EMAIL
+                original: email
+                number: 1
+              - name: METHOD_GOOGLE
+                original: google
+                number: 2
+              - name: METHOD_APPLE
+                original: apple
+                number: 3
+      - name: UserCartCheckoutV1
+        description: User entered the checkout flow.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserCartCheckoutV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserCartCheckoutV1Properties
+        fields:
+          - name: cart_id
+            number: 1
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: true
+            required: true
+          - name: currency
+            number: 2
+            kind: enum
+            type: Currency
+            repeated: false
+            optional: true
+            required: true
+          - name: item_count
+            number: 3
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: subtotal_cents
+            number: 4
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: Currency
+            values:
+              - name: CURRENCY_USD
+                original: USD
+                number: 1
+              - name: CURRENCY_EUR
+                original: EUR
+                number: 2
+              - name: CURRENCY_GBP
+                original: GBP
+                number: 3
+      - name: UserCartItemAddedV1
+        description: User added an item to their cart.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserCartItemAddedV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserCartItemAddedV1Properties
+        fields:
+          - name: cart_id
+            number: 1
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: true
+            required: true
+          - name: quantity
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+          - name: sku
+            number: 3
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+        enums: []
+      - name: UserCartPurchaseV1
+        description: User completed a purchase and payment was accepted.
+        fields:
+          - name: event_name
+            number: 1
+            kind: scalar
+            type: string
+            repeated: false
+            optional: false
+            required: false
+          - name: event_version
+            number: 2
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: false
+            required: false
+          - name: event_id
+            number: 3
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: false
+            required: false
+          - name: event_ts
+            number: 4
+            kind: scalar
+            type: timestamp
+            repeated: false
+            optional: false
+            required: false
+          - name: client
+            number: 5
+            kind: message
+            type: Client
+            repeated: false
+            optional: false
+            required: false
+          - name: context
+            number: 6
+            kind: message
+            type: UserContext
+            repeated: false
+            optional: false
+            required: false
+          - name: properties
+            number: 7
+            kind: message
+            type: UserCartPurchaseV1Properties
+            repeated: false
+            optional: false
+            required: false
+        enums: []
+      - name: UserCartPurchaseV1Properties
+        fields:
+          - name: cart_id
+            number: 1
+            kind: scalar
+            type: uuid
+            repeated: false
+            optional: true
+            required: true
+          - name: coupon_code
+            number: 2
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: false
+          - name: order_id
+            number: 3
+            kind: scalar
+            type: string
+            repeated: false
+            optional: true
+            required: true
+          - name: payment_method
+            number: 4
+            kind: enum
+            type: PaymentMethod
+            repeated: false
+            optional: true
+            required: true
+          - name: total_cents
+            number: 5
+            kind: scalar
+            type: integer
+            repeated: false
+            optional: true
+            required: true
+        enums:
+          - name: PaymentMethod
+            values:
+              - name: PAYMENT_METHOD_CARD
+                original: card
+                number: 1
+              - name: PAYMENT_METHOD_APPLE_PAY
+                original: apple_pay
+                number: 2
+              - name: PAYMENT_METHOD_GOOGLE_PAY
+                original: google_pay
+                number: 3
