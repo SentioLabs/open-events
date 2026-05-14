@@ -3,3 +3,7 @@
 _build/
 build/
 gen/
+
+# Local-only working artifacts (not checked in)
+/docs/plans/
+/SLOP_REVIEW.md
