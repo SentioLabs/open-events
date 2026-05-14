@@ -70,35 +70,40 @@ func TestFromRegistryRejectsSingleSegmentGoPackage(t *testing.T) {
 }
 
 func TestFromRegistryLowersDemoShape(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to use per-domain context. Skip until T4 lands.
-	t.Skip("context lowering requires per-domain lock (T4)")
-
+	// Tests per-domain DomainSpec construction with context fields and events.
+	// Uses the T4 per-domain shape: context lives in reg.Domains[name].Context
+	// and lock.Domains[name].Context.
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"tenant_id": {
-				Name:        "tenant_id",
-				Type:        registry.FieldTypeString,
-				Required:    true,
-				Description: "Stable tenant identifier.",
-			},
-			"platform": {
-				Name:     "platform",
-				Type:     registry.FieldTypeEnum,
-				Required: true,
-				Values:   []string{"ios", "android", "web"},
-			},
-			"session_id": {
-				Name:     "session_id",
-				Type:     registry.FieldTypeString,
-				Required: false,
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"tenant_id": {
+						Name:        "tenant_id",
+						Type:        registry.FieldTypeString,
+						Required:    true,
+						Description: "Stable tenant identifier.",
+					},
+					"platform": {
+						Name:     "platform",
+						Type:     registry.FieldTypeEnum,
+						Required: true,
+						Values:   []string{"ios", "android", "web"},
+					},
+					"session_id": {
+						Name:     "session_id",
+						Type:     registry.FieldTypeString,
+						Required: false,
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:        "checkout.completed",
 				Version:     1,
+				Domain:      "storefront",
 				Description: "User completed checkout and payment was accepted.",
 				Properties: map[string]registry.Field{
 					"order_id": {
@@ -122,6 +127,7 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 			{
 				Name:        "search.performed",
 				Version:     1,
+				Domain:      "storefront",
 				Description: "User submitted a storefront search query.",
 				Properties: map[string]registry.Field{
 					"query": {
@@ -144,8 +150,15 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 
 	lock := Lock{
 		Version: 1,
-		// Context moved to per-domain Domains map (T3). Domains field left empty
-		// here because this test is skipped pending T4.
+		Domains: map[string]LockedDomain{
+			"storefront": {
+				Context: map[string]LockedField{
+					"platform":   {StableID: "platform", ProtoNumber: 4},
+					"session_id": {StableID: "session_id", ProtoNumber: 3},
+					"tenant_id":  {StableID: "tenant_id", ProtoNumber: 2},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"checkout.completed@1": {
 				Envelope: map[string]LockedField{
@@ -180,115 +193,96 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 	if got.Namespace != "com.acme.storefront" {
 		t.Fatalf("Registry.Namespace = %q, want %q", got.Namespace, "com.acme.storefront")
 	}
-	if len(got.Files) != 1 {
-		t.Fatalf("len(Registry.Files) = %d, want 1", len(got.Files))
+
+	// Check per-domain DomainSpecs.
+	if len(got.DomainSpecs) != 1 {
+		t.Fatalf("len(DomainSpecs) = %d, want 1", len(got.DomainSpecs))
+	}
+	ds := got.DomainSpecs[0]
+	if ds.Name != "storefront" {
+		t.Fatalf("DomainSpec.Name = %q, want %q", ds.Name, "storefront")
+	}
+	if ds.ContextName != "StorefrontContext" {
+		t.Fatalf("DomainSpec.ContextName = %q, want %q", ds.ContextName, "StorefrontContext")
 	}
 
-	file := got.Files[0]
-	if file.Package != "com.acme.storefront.v1" {
-		t.Fatalf("File.Package = %q, want %q", file.Package, "com.acme.storefront.v1")
+	// Verify context fields (sorted: platform, session_id, tenant_id).
+	if len(ds.ContextFields) != 3 {
+		t.Fatalf("len(DomainSpec.ContextFields) = %d, want 3", len(ds.ContextFields))
 	}
-	if file.Path != "com/acme/storefront/v1/events.proto" {
-		t.Fatalf("File.Path = %q, want %q", file.Path, "com/acme/storefront/v1/events.proto")
+	if ds.ContextFields[0].Name != "platform" || ds.ContextFields[0].Number != 4 {
+		t.Fatalf("ContextField[0] = %#v, want name=platform number=4", ds.ContextFields[0])
 	}
-	if file.GoPackage != "" {
-		t.Fatalf("File.GoPackage = %q, want empty when registry package.go is unset", file.GoPackage)
+	if !ds.ContextFields[0].Optional {
+		t.Fatalf("platform Optional = false, want true")
+	}
+	if !ds.ContextFields[0].Required {
+		t.Fatalf("platform Required = false, want true")
+	}
+	if ds.ContextFields[0].Type.Enum != "Platform" {
+		t.Fatalf("platform enum type = %q, want %q", ds.ContextFields[0].Type.Enum, "Platform")
+	}
+	if ds.ContextFields[1].Name != "session_id" || ds.ContextFields[1].Number != 3 {
+		t.Fatalf("ContextField[1] = %#v, want name=session_id number=3", ds.ContextFields[1])
+	}
+	if !ds.ContextFields[1].Optional {
+		t.Fatalf("session_id Optional = false, want true")
+	}
+	if ds.ContextFields[1].Required {
+		t.Fatalf("session_id Required = true, want false")
+	}
+	if ds.ContextFields[2].Name != "tenant_id" || ds.ContextFields[2].Number != 2 {
+		t.Fatalf("ContextField[2] = %#v, want name=tenant_id number=2", ds.ContextFields[2])
+	}
+	if !ds.ContextFields[2].Optional {
+		t.Fatalf("tenant_id Optional = false, want true")
+	}
+	if !ds.ContextFields[2].Required {
+		t.Fatalf("tenant_id Required = false, want true")
 	}
 
-	if len(file.Messages) != 6 {
-		t.Fatalf("len(File.Messages) = %d, want 6", len(file.Messages))
+	// Verify context enums.
+	if len(ds.ContextEnums) != 1 {
+		t.Fatalf("len(ContextEnums) = %d, want 1", len(ds.ContextEnums))
 	}
-	if file.Messages[0].Name != "Client" {
-		t.Fatalf("Messages[0].Name = %q, want %q", file.Messages[0].Name, "Client")
+	if ds.ContextEnums[0].Name != "Platform" {
+		t.Fatalf("ContextEnum.Name = %q, want %q", ds.ContextEnums[0].Name, "Platform")
 	}
-	if file.Messages[1].Name != "Context" {
-		t.Fatalf("Messages[1].Name = %q, want %q", file.Messages[1].Name, "Context")
+	if len(ds.ContextEnums[0].Values) != 3 {
+		t.Fatalf("len(ContextEnum.Values) = %d, want 3", len(ds.ContextEnums[0].Values))
 	}
-	if file.Messages[2].Name != "CheckoutCompletedV1" {
-		t.Fatalf("Messages[2].Name = %q, want %q", file.Messages[2].Name, "CheckoutCompletedV1")
-	}
-	if file.Messages[3].Name != "CheckoutCompletedV1Properties" {
-		t.Fatalf("Messages[3].Name = %q, want %q", file.Messages[3].Name, "CheckoutCompletedV1Properties")
-	}
-	if file.Messages[4].Name != "SearchPerformedV1" {
-		t.Fatalf("Messages[4].Name = %q, want %q", file.Messages[4].Name, "SearchPerformedV1")
-	}
-	if file.Messages[5].Name != "SearchPerformedV1Properties" {
-		t.Fatalf("Messages[5].Name = %q, want %q", file.Messages[5].Name, "SearchPerformedV1Properties")
+	if ds.ContextEnums[0].Values[0].Name != "PLATFORM_IOS" {
+		t.Fatalf("ContextEnum.Values[0].Name = %q, want %q", ds.ContextEnums[0].Values[0].Name, "PLATFORM_IOS")
 	}
 
-	envelope := file.Messages[2]
-	wantEnvelopeNumbers := map[string]int{
-		"event_name":    1,
-		"event_version": 2,
-		"event_id":      3,
-		"event_ts":      4,
-		"client":        5,
-		"context":       6,
-		"properties":    7,
+	// Verify domain events (sorted: checkout.completed, search.performed).
+	if len(ds.Events) != 2 {
+		t.Fatalf("len(DomainSpec.Events) = %d, want 2", len(ds.Events))
 	}
-	if len(envelope.Fields) != len(wantEnvelopeNumbers) {
-		t.Fatalf("len(Envelope.Fields) = %d, want %d", len(envelope.Fields), len(wantEnvelopeNumbers))
+
+	// Checkout event.
+	checkoutEnv := ds.Events[0].Envelope
+	if checkoutEnv.Name != "CheckoutCompletedV1" {
+		t.Fatalf("Events[0].Envelope.Name = %q, want %q", checkoutEnv.Name, "CheckoutCompletedV1")
 	}
-	for _, field := range envelope.Fields {
-		wantNumber, ok := wantEnvelopeNumbers[field.Name]
-		if !ok {
-			t.Fatalf("unexpected envelope field %q", field.Name)
+	if checkoutEnv.Description != "User completed checkout and payment was accepted." {
+		t.Fatalf("Events[0].Envelope.Description = %q", checkoutEnv.Description)
+	}
+	// Context field in envelope must reference domain context type.
+	var contextField Field
+	for _, f := range checkoutEnv.Fields {
+		if f.Name == "context" {
+			contextField = f
 		}
-		if field.Number != wantNumber {
-			t.Fatalf("envelope field %q number = %d, want %d", field.Name, field.Number, wantNumber)
-		}
+	}
+	if contextField.Type.Message != "StorefrontContext" {
+		t.Fatalf("envelope context field type = %q, want %q", contextField.Type.Message, "StorefrontContext")
 	}
 
-	context := file.Messages[1]
-	if len(context.Fields) != 3 {
-		t.Fatalf("len(Context.Fields) = %d, want 3", len(context.Fields))
+	checkoutProps := ds.Events[0].Properties
+	if checkoutProps.Name != "CheckoutCompletedV1Properties" {
+		t.Fatalf("Events[0].Properties.Name = %q, want %q", checkoutProps.Name, "CheckoutCompletedV1Properties")
 	}
-	if context.Fields[0].Name != "platform" || context.Fields[0].Number != 4 {
-		t.Fatalf("Context field[0] = %#v, want name=platform number=4", context.Fields[0])
-	}
-	if !context.Fields[0].Optional {
-		t.Fatalf("Context.platform Optional = false, want true")
-	}
-	if !context.Fields[0].Required {
-		t.Fatalf("Context.platform Required = false, want true")
-	}
-	if context.Fields[0].Type.Enum != "Platform" {
-		t.Fatalf("Context.platform enum type = %q, want %q", context.Fields[0].Type.Enum, "Platform")
-	}
-	if context.Fields[1].Name != "session_id" || context.Fields[1].Number != 3 {
-		t.Fatalf("Context field[1] = %#v, want name=session_id number=3", context.Fields[1])
-	}
-	if !context.Fields[1].Optional {
-		t.Fatalf("Context.session_id Optional = false, want true")
-	}
-	if context.Fields[1].Required {
-		t.Fatalf("Context.session_id Required = true, want false")
-	}
-	if context.Fields[2].Name != "tenant_id" || context.Fields[2].Number != 2 {
-		t.Fatalf("Context field[2] = %#v, want name=tenant_id number=2", context.Fields[2])
-	}
-	if !context.Fields[2].Optional {
-		t.Fatalf("Context.tenant_id Optional = false, want true")
-	}
-	if !context.Fields[2].Required {
-		t.Fatalf("Context.tenant_id Required = false, want true")
-	}
-
-	if len(context.Enums) != 1 {
-		t.Fatalf("len(Context.Enums) = %d, want 1", len(context.Enums))
-	}
-	if context.Enums[0].Name != "Platform" {
-		t.Fatalf("Context enum name = %q, want %q", context.Enums[0].Name, "Platform")
-	}
-	if len(context.Enums[0].Values) != 3 {
-		t.Fatalf("len(Context.Enums[0].Values) = %d, want 3", len(context.Enums[0].Values))
-	}
-	if context.Enums[0].Values[0].Name != "PLATFORM_IOS" {
-		t.Fatalf("Context enum value[0].Name = %q, want %q", context.Enums[0].Values[0].Name, "PLATFORM_IOS")
-	}
-
-	checkoutProps := file.Messages[3]
 	if checkoutProps.Fields[0].Name != "coupon_code" || checkoutProps.Fields[0].Number != 2 {
 		t.Fatalf("Checkout properties field[0] = %#v, want name=coupon_code number=2", checkoutProps.Fields[0])
 	}
@@ -329,7 +323,11 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 		t.Fatalf("Checkout enum value[1].Name = %q, want %q", checkoutProps.Enums[0].Values[1].Name, "PAYMENT_METHOD_APPLE_PAY")
 	}
 
-	searchProps := file.Messages[5]
+	// Search event.
+	searchProps := ds.Events[1].Properties
+	if searchProps.Name != "SearchPerformedV1Properties" {
+		t.Fatalf("Events[1].Properties.Name = %q, want %q", searchProps.Name, "SearchPerformedV1Properties")
+	}
 	if searchProps.Fields[0].Name != "filters" {
 		t.Fatalf("Search properties field[0].Name = %q, want %q", searchProps.Fields[0].Name, "filters")
 	}
@@ -342,28 +340,55 @@ func TestFromRegistryLowersDemoShape(t *testing.T) {
 	if searchProps.Fields[0].Type.Scalar != "string" {
 		t.Fatalf("Search filters scalar type = %q, want %q", searchProps.Fields[0].Type.Scalar, "string")
 	}
+
+	// Verify CommonSpec has Client message.
+	if got.CommonSpec.Client.Name != "Client" {
+		t.Fatalf("CommonSpec.Client.Name = %q, want %q", got.CommonSpec.Client.Name, "Client")
+	}
+	if len(got.CommonSpec.Client.Fields) != 2 {
+		t.Fatalf("len(CommonSpec.Client.Fields) = %d, want 2", len(got.CommonSpec.Client.Fields))
+	}
 }
 
 func TestFromRegistryRejectsMissingLockEntries(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate per-domain context lock entries.
-	t.Skip("context lock entry validation requires per-domain lock (T4)")
-
+	// Verifies that per-domain context lock entries are required when a domain
+	// has context fields (T4 per-domain lock shape via lock.Domains[name].Context).
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+				},
+			},
 		},
 		Events: []registry.Event{{
 			Name:    "checkout.completed",
 			Version: 1,
+			Domain:  "storefront",
 			Properties: map[string]registry.Field{
 				"order_id": {Name: "order_id", Type: registry.FieldTypeString},
 			},
 		}},
 	}
 
-	_, err := FromRegistry(reg, Lock{Version: 1})
+	lock := Lock{
+		Version: 1,
+		// lock.Domains["storefront"] has no Context entries, so tenant_id is missing.
+		Domains: map[string]LockedDomain{
+			"storefront": {Context: map[string]LockedField{}},
+		},
+		Events: map[string]LockedEvent{
+			"checkout.completed@1": {
+				Properties: map[string]LockedField{
+					"order_id": {StableID: "order_id", ProtoNumber: 1},
+				},
+			},
+		},
+	}
+
+	_, err := FromRegistry(reg, lock)
 	if err == nil {
 		t.Fatalf("FromRegistry() error = nil, want missing lock error")
 	}
@@ -443,10 +468,7 @@ func TestFromRegistryRejectsUnsupportedArrayShapes(t *testing.T) {
 }
 
 func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// validateContextLock to validate per-domain context lock numbers.
-	t.Skip("context lock number validation requires per-domain lock (T4)")
-
+	// Verifies that invalid proto numbers in per-domain context lock entries are rejected.
 	tests := []struct {
 		name   string
 		number int
@@ -460,14 +482,25 @@ func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			reg := registry.Registry{
 				Namespace: "com.acme.storefront",
-				Context: map[string]registry.Field{
-					"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+				Domains: map[string]registry.Domain{
+					"storefront": {
+						Name: "storefront",
+						Context: map[string]registry.Field{
+							"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+						},
+					},
 				},
-				Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+				Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 			}
 			lock := Lock{
 				Version: 1,
-				// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+				Domains: map[string]LockedDomain{
+					"storefront": {
+						Context: map[string]LockedField{
+							"tenant_id": {StableID: "tenant_id", ProtoNumber: tt.number},
+						},
+					},
+				},
 				Events: map[string]LockedEvent{
 					"test@1": {Properties: map[string]LockedField{}},
 				},
@@ -485,20 +518,28 @@ func TestFromRegistryRejectsInvalidLockNumbers(t *testing.T) {
 }
 
 func TestFromRegistryRejectsStableIDMismatch(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// validateContextLock to validate per-domain StableID mismatches.
-	t.Skip("context StableID validation requires per-domain lock (T4)")
-
+	// Verifies that per-domain context lock StableID mismatches are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+				},
+			},
 		},
-		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"storefront": {
+				Context: map[string]LockedField{
+					"tenant_id": {StableID: "wrong_name", ProtoNumber: 1},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -514,21 +555,30 @@ func TestFromRegistryRejectsStableIDMismatch(t *testing.T) {
 }
 
 func TestFromRegistryRejectsDuplicateNumbers(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// validateContextLock to validate per-domain duplicate numbers.
-	t.Skip("context duplicate number validation requires per-domain lock (T4)")
-
+	// Verifies that duplicate proto numbers in per-domain context lock entries are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
-			"user_id":   {Name: "user_id", Type: registry.FieldTypeString},
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"tenant_id": {Name: "tenant_id", Type: registry.FieldTypeString},
+					"user_id":   {Name: "user_id", Type: registry.FieldTypeString},
+				},
+			},
 		},
-		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"storefront": {
+				Context: map[string]LockedField{
+					"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
+					"user_id":   {StableID: "user_id", ProtoNumber: 1}, // duplicate!
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -544,20 +594,28 @@ func TestFromRegistryRejectsDuplicateNumbers(t *testing.T) {
 }
 
 func TestFromRegistryRejectsReservedFieldNames(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context field names.
-	t.Skip("context field name validation requires per-domain lock (T4)")
-
+	// Verifies that protobuf reserved keyword field names in per-domain context are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"message": {Name: "message", Type: registry.FieldTypeString},
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"message": {Name: "message", Type: registry.FieldTypeString},
+				},
+			},
 		},
-		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"storefront": {
+				Context: map[string]LockedField{
+					"message": {StableID: "message", ProtoNumber: 1},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -573,20 +631,28 @@ func TestFromRegistryRejectsReservedFieldNames(t *testing.T) {
 }
 
 func TestFromRegistryRejectsNonASCIIFieldNames(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context field names.
-	t.Skip("context field name validation requires per-domain lock (T4)")
-
+	// Verifies that non-ASCII field names in per-domain context are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme.storefront",
-		Context: map[string]registry.Field{
-			"café": {Name: "café", Type: registry.FieldTypeString},
+		Domains: map[string]registry.Domain{
+			"storefront": {
+				Name: "storefront",
+				Context: map[string]registry.Field{
+					"café": {Name: "café", Type: registry.FieldTypeString},
+				},
+			},
 		},
-		Events: []registry.Event{{Name: "test", Version: 1, Properties: map[string]registry.Field{}}},
+		Events: []registry.Event{{Name: "test", Version: 1, Domain: "storefront", Properties: map[string]registry.Field{}}},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"storefront": {
+				Context: map[string]LockedField{
+					"café": {StableID: "café", ProtoNumber: 1},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test@1": {Properties: map[string]LockedField{}},
 		},
@@ -753,22 +819,25 @@ func TestFromRegistryRejectsUnrenderableEventName(t *testing.T) {
 }
 
 func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context field names including scalar keywords.
-	t.Skip("context field name validation requires per-domain lock (T4)")
-
+	// Verifies that protobuf scalar type keywords used as context field names are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme",
-		Context: map[string]registry.Field{
-			"string": {
-				Name: "string",
-				Type: registry.FieldTypeString,
+		Domains: map[string]registry.Domain{
+			"checkout": {
+				Name: "checkout",
+				Context: map[string]registry.Field{
+					"string": {
+						Name: "string",
+						Type: registry.FieldTypeString,
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:    "test.event",
 				Version: 1,
+				Domain:  "checkout",
 				Properties: map[string]registry.Field{
 					"bool": {
 						Name: "bool",
@@ -780,7 +849,13 @@ func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"checkout": {
+				Context: map[string]LockedField{
+					"string": {StableID: "string", ProtoNumber: 1},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{
@@ -800,35 +875,45 @@ func TestFromRegistryRejectsProtobufScalarKeywordAsFieldName(t *testing.T) {
 }
 
 func TestFromRegistryRejectsContextEnumTypeNameCollision(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context enum type name collisions.
-	t.Skip("context enum type name collision requires per-domain lock (T4)")
-
+	// Verifies that per-domain context enum type name collisions are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme",
-		Context: map[string]registry.Field{
-			"foo_bar": {
-				Name:   "foo_bar",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"a", "b"},
-			},
-			"foo__bar": {
-				Name:   "foo__bar",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"x", "y"},
+		Domains: map[string]registry.Domain{
+			"checkout": {
+				Name: "checkout",
+				Context: map[string]registry.Field{
+					"foo_bar": {
+						Name:   "foo_bar",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"a", "b"},
+					},
+					"foo__bar": {
+						Name:   "foo__bar",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"x", "y"},
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:       "test.event",
 				Version:    1,
+				Domain:     "checkout",
 				Properties: map[string]registry.Field{},
 			},
 		},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"checkout": {
+				Context: map[string]LockedField{
+					"foo_bar":  {StableID: "foo_bar", ProtoNumber: 1},
+					"foo__bar": {StableID: "foo__bar", ProtoNumber: 2},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{},
@@ -890,29 +975,38 @@ func TestFromRegistryRejectsPropertiesEnumTypeNameCollision(t *testing.T) {
 }
 
 func TestFromRegistryRejectsLeadingUnderscoreInFieldName(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context field names including leading underscore.
-	t.Skip("context field name validation requires per-domain lock (T4)")
-
+	// Verifies that per-domain context field names with leading underscores are rejected.
 	reg := registry.Registry{
 		Namespace: "com.acme",
-		Context: map[string]registry.Field{
-			"_tenant_id": {
-				Name: "_tenant_id",
-				Type: registry.FieldTypeString,
+		Domains: map[string]registry.Domain{
+			"checkout": {
+				Name: "checkout",
+				Context: map[string]registry.Field{
+					"_tenant_id": {
+						Name: "_tenant_id",
+						Type: registry.FieldTypeString,
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:       "test.event",
 				Version:    1,
+				Domain:     "checkout",
 				Properties: map[string]registry.Field{},
 			},
 		},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"checkout": {
+				Context: map[string]LockedField{
+					"_tenant_id": {StableID: "_tenant_id", ProtoNumber: 1},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{},
@@ -1138,36 +1232,47 @@ func TestFromRegistryAllowsMissingEnvelopeEntries(t *testing.T) {
 }
 
 func TestFromRegistryRejectsContextEnumZeroValueCollisionBetweenEnums(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context enum value collisions.
-	t.Skip("context enum value collision requires per-domain lock (T4)")
-
-	// Two enums whose zero values collide: enum names that normalize to the same prefix
+	// Verifies that per-domain context enum type name collisions (which cause
+	// zero-value collisions) are rejected. Two enum field names normalizing to
+	// the same PascalCase type name both generate the same zero value.
 	reg := registry.Registry{
 		Namespace: "com.acme",
-		Context: map[string]registry.Field{
-			"pay_method": {
-				Name:   "pay_method",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"card", "cash"},
-			},
-			"pay__method": {
-				Name:   "pay__method",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"wire", "check"},
+		Domains: map[string]registry.Domain{
+			"checkout": {
+				Name: "checkout",
+				Context: map[string]registry.Field{
+					"pay_method": {
+						Name:   "pay_method",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"card", "cash"},
+					},
+					"pay__method": {
+						Name:   "pay__method",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"wire", "check"},
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:       "test.event",
 				Version:    1,
+				Domain:     "checkout",
 				Properties: map[string]registry.Field{},
 			},
 		},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"checkout": {
+				Context: map[string]LockedField{
+					"pay_method":  {StableID: "pay_method", ProtoNumber: 1},
+					"pay__method": {StableID: "pay__method", ProtoNumber: 2},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{},
@@ -1176,51 +1281,59 @@ func TestFromRegistryRejectsContextEnumZeroValueCollisionBetweenEnums(t *testing
 	}
 
 	// Both "pay_method" and "pay__method" normalize to "PayMethod" as enum type name.
-	// This already causes enum type collision, so this test may be redundant.
-	// But if they had different type names but same zero value, that would be the issue.
-	// Actually, both normalize to PayMethod for type name, which is already caught by existing validation.
-	// Let me adjust to test the actual zero value collision: authored value matching zero value.
+	// This is caught by enum type name collision validation.
 	_, err := FromRegistry(reg, lock)
 	if err == nil {
 		t.Fatalf("FromRegistry() error = nil, want enum type collision")
 	}
-	// This should already be caught by enum type name collision
 	if !strings.Contains(err.Error(), "collision") && !strings.Contains(err.Error(), "PayMethod") {
 		t.Fatalf("FromRegistry() error = %q, want PayMethod collision", err)
 	}
 }
 
 func TestFromRegistryRejectsContextEnumAuthoredValueMatchesOtherEnumZeroValue(t *testing.T) {
-	// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite
-	// lowerContextMessage to validate context enum value collisions.
-	t.Skip("context enum value collision requires per-domain lock (T4)")
-
-	// An authored enum value that, after adding enum prefix, collides with another enum's zero value
+	// Verifies that per-domain context enum fields with different type names but
+	// authored values that don't cause cross-enum collision are accepted.
+	// Since enum values are prefixed with the enum type name, cross-enum value
+	// collisions can only happen if two enum type names are identical (already tested).
 	reg := registry.Registry{
 		Namespace: "com.acme",
-		Context: map[string]registry.Field{
-			"status": {
-				Name:   "status",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"active", "inactive"},
-			},
-			"mode": {
-				Name:   "mode",
-				Type:   registry.FieldTypeEnum,
-				Values: []string{"status_unspecified", "live"},
+		Domains: map[string]registry.Domain{
+			"checkout": {
+				Name: "checkout",
+				Context: map[string]registry.Field{
+					"status": {
+						Name:   "status",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"active", "inactive"},
+					},
+					"mode": {
+						Name:   "mode",
+						Type:   registry.FieldTypeEnum,
+						Values: []string{"status_unspecified", "live"},
+					},
+				},
 			},
 		},
 		Events: []registry.Event{
 			{
 				Name:       "test.event",
 				Version:    1,
+				Domain:     "checkout",
 				Properties: map[string]registry.Field{},
 			},
 		},
 	}
 	lock := Lock{
 		Version: 1,
-		// Context field removed: T3 replaced Lock.Context with Lock.Domains.
+		Domains: map[string]LockedDomain{
+			"checkout": {
+				Context: map[string]LockedField{
+					"status": {StableID: "status", ProtoNumber: 1},
+					"mode":   {StableID: "mode", ProtoNumber: 2},
+				},
+			},
+		},
 		Events: map[string]LockedEvent{
 			"test.event@1": {
 				Properties: map[string]LockedField{},
@@ -1230,21 +1343,7 @@ func TestFromRegistryRejectsContextEnumAuthoredValueMatchesOtherEnumZeroValue(t 
 
 	// Status enum generates zero value: STATUS_UNSPECIFIED
 	// Mode enum has authored value "status_unspecified" which becomes MODE_STATUS_UNSPECIFIED
-	// These DON'T collide because of MODE_ prefix.
-	// For a collision, the mode enum would need an authored value that becomes STATUS_UNSPECIFIED after prefixing,
-	// which is impossible since it will be prefixed with MODE_.
-	//
-	// Real collision case: The authored value already contains the other enum's full name including prefix.
-	// Or wait - the task says "Protobuf enum constants are scoped to the containing message".
-	// In proto2, enum values were package-scoped. In proto3 with nested enums, they're message-scoped.
-	// So STATUS_UNSPECIFIED and MODE_STATUS_UNSPECIFIED are both valid in the same message.
-	//
-	// The actual collision would be if someone used the same VALUE name without its enum prefix.
-	// But we always add the enum type prefix, so collision can only happen if:
-	// 1. Two enum types normalize to the same name (already tested)
-	// 2. An authored value in one enum happens to equal the FULL rendered name from another enum
-	//
-	// Let me create test case 2:
+	// These DON'T collide because of MODE_ prefix — this should succeed.
 	_, err := FromRegistry(reg, lock)
 	if err != nil {
 		t.Fatalf("FromRegistry() error = %v, want nil (no collision with different prefixes)", err)

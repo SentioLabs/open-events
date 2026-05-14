@@ -34,6 +34,13 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 		return events[i].Name < events[j].Name
 	})
 
+	// Build per-domain specs.
+	domainSpecs, err := buildDomainSpecs(reg, lock, version)
+	if err != nil {
+		return Registry{}, err
+	}
+
+	// Build the legacy single-file output (for backward compatibility with render.go).
 	files := make([]File, 0, 1)
 	{
 		pkg, err := ProtoPackage(reg.Namespace, version)
@@ -45,14 +52,16 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 			return Registry{}, err
 		}
 
-		context, err := lowerContextMessage(reg.Context, lock)
-		if err != nil {
-			return Registry{}, err
-		}
-
 		messageNames := map[string]string{"Client": "Client", "Context": "Context"}
 
-		messages := []Message{clientMessage(), context}
+		messages := []Message{clientMessage()}
+
+		// For the per-domain shape, context lives in DomainSpecs. For legacy single-file
+		// output (no domains), emit an empty Context message to maintain backward compat.
+		if len(reg.Domains) == 0 {
+			messages = append(messages, Message{Name: "Context", Fields: []Field{}, Enums: []Enum{}})
+		}
+
 		for _, event := range events {
 			// Validate event name before case conversion
 			if err := validateEventName(event.Name); err != nil {
@@ -88,13 +97,192 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 			if err != nil {
 				return Registry{}, err
 			}
-			messages = append(messages, envelopeMessage(event), properties)
+
+			// Determine the context type name for this event's domain.
+			contextTypeName := contextMessageName(event.Domain)
+			messages = append(messages, envelopeMessageWithContext(event, contextTypeName), properties)
 		}
 
 		files = append(files, File{Path: filePath, Package: pkg, GoPackage: reg.Package.Go, Messages: messages})
 	}
 
-	return Registry{Namespace: reg.Namespace, Files: files}, nil
+	return Registry{
+		Namespace:   reg.Namespace,
+		Files:       files,
+		DomainSpecs: domainSpecs,
+		CommonSpec:  CommonSpec{Client: clientMessage()},
+	}, nil
+}
+
+// buildDomainSpecs constructs one DomainSpec per domain in reg, ordered alphabetically.
+func buildDomainSpecs(reg registry.Registry, lock Lock, version int) ([]DomainSpec, error) {
+	bundles := GroupByDomain(reg)
+	specs := make([]DomainSpec, 0, len(bundles))
+
+	for _, bundle := range bundles {
+		domainName := bundle.Domain.Name
+		lockedDomain, _ := lock.Domains[domainName]
+
+		// Lower context fields for this domain.
+		contextName := contextMessageName(domainName)
+		contextFields, contextEnums, err := lowerDomainContext(domainName, bundle.Domain.Context, lockedDomain.Context)
+		if err != nil {
+			return nil, err
+		}
+
+		// Sort events for determinism.
+		domainEvents := append([]registry.Event(nil), bundle.Events...)
+		sort.Slice(domainEvents, func(i, j int) bool {
+			return domainEvents[i].Name < domainEvents[j].Name
+		})
+
+		// Validate message name uniqueness within this domain.
+		messageNames := map[string]string{
+			contextName: "<context>",
+		}
+
+		events := make([]DomainEvent, 0, len(domainEvents))
+		for _, event := range domainEvents {
+			if err := validateEventName(event.Name); err != nil {
+				return nil, fmt.Errorf("event name %q is invalid: %w", event.Name, err)
+			}
+			if pascalCase(event.Name) == "" {
+				return nil, fmt.Errorf("event name %q cannot be rendered as a valid protobuf message name", event.Name)
+			}
+
+			envelopeName := EventMessageName(event)
+			if err := isValidProtoMessageName(envelopeName); err != nil {
+				return nil, fmt.Errorf("event %q generates invalid message name %q: %w", event.Name, envelopeName, err)
+			}
+			if existing, exists := messageNames[envelopeName]; exists {
+				return nil, fmt.Errorf("message name collision: events %q and %q both generate message name %q", existing, event.Name, envelopeName)
+			}
+			messageNames[envelopeName] = event.Name
+
+			propsName := PropertiesMessageName(event)
+			if err := isValidProtoMessageName(propsName); err != nil {
+				return nil, fmt.Errorf("event %q generates invalid properties message name %q: %w", event.Name, propsName, err)
+			}
+			if existing, exists := messageNames[propsName]; exists {
+				return nil, fmt.Errorf("message name collision: events %q and %q both generate message name %q", existing, event.Name, propsName)
+			}
+			messageNames[propsName] = event.Name
+
+			properties, err := lowerPropertiesMessage(event, lock)
+			if err != nil {
+				return nil, err
+			}
+
+			events = append(events, DomainEvent{
+				Envelope:   envelopeMessageWithContext(event, contextName),
+				Properties: properties,
+			})
+		}
+
+		specs = append(specs, DomainSpec{
+			Name:          domainName,
+			ContextName:   contextName,
+			ContextFields: contextFields,
+			ContextEnums:  contextEnums,
+			Events:        events,
+		})
+	}
+
+	return specs, nil
+}
+
+// contextMessageName returns the PascalCase Context message name for a domain.
+// For domain "user", returns "UserContext". For empty domain, returns "Context".
+func contextMessageName(domain string) string {
+	if domain == "" {
+		return "Context"
+	}
+	return pascalCase(domain) + "Context"
+}
+
+// lowerDomainContext lowers the context fields for one domain using the domain's lock entries.
+func lowerDomainContext(domainName string, contextFields map[string]registry.Field, lockedContext map[string]LockedField) ([]Field, []Enum, error) {
+	if len(contextFields) == 0 {
+		return []Field{}, []Enum{}, nil
+	}
+
+	if len(lockedContext) == 0 {
+		// Missing lock entries for all context fields.
+		fieldNames := make([]string, 0, len(contextFields))
+		for name := range contextFields {
+			fieldNames = append(fieldNames, name)
+		}
+		sort.Strings(fieldNames)
+		return nil, nil, fmt.Errorf("schema lock is missing context.%s", fieldNames[0])
+	}
+
+	fields := make([]Field, 0, len(contextFields))
+	enums := make([]Enum, 0)
+	usedNumbers := make(map[int]string)
+	enumTypeNames := make(map[string]string)
+	enumValueNames := make(map[string]string)
+
+	for _, name := range sortedRegistryFieldNames(contextFields) {
+		field := contextFields[name]
+
+		if err := isValidProtoIdentifier(name); err != nil {
+			return nil, nil, fmt.Errorf("context.%s: %w", name, err)
+		}
+
+		locked, ok := lockedContext[name]
+		if !ok {
+			return nil, nil, fmt.Errorf("schema lock is missing context.%s", name)
+		}
+
+		if locked.StableID != name {
+			return nil, nil, fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
+		}
+
+		if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
+			return nil, nil, err
+		}
+
+		if existing, exists := usedNumbers[locked.ProtoNumber]; exists {
+			return nil, nil, fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
+		}
+		usedNumbers[locked.ProtoNumber] = name
+
+		lowered, enum, err := lowerField(field, locked.ProtoNumber, "context."+name)
+		if err != nil {
+			return nil, nil, err
+		}
+		fields = append(fields, lowered)
+		if enum != nil {
+			if existing, exists := enumTypeNames[enum.Name]; exists {
+				return nil, nil, fmt.Errorf("context enum type name collision: fields %q and %q both generate enum type %q", existing, name, enum.Name)
+			}
+			enumTypeNames[enum.Name] = name
+
+			zeroValueName := EnumZeroValueName(enum.Name)
+			if existing, exists := enumValueNames[zeroValueName]; exists {
+				return nil, nil, fmt.Errorf("context enum value collision: field %q zero value %q conflicts with %s", name, zeroValueName, existing)
+			}
+			enumValueNames[zeroValueName] = fmt.Sprintf("field %q zero value", name)
+
+			for _, val := range enum.Values {
+				if existing, exists := enumValueNames[val.Name]; exists {
+					return nil, nil, fmt.Errorf("context enum value collision: field %q value %q (from %q) conflicts with %s", name, val.Name, val.Original, existing)
+				}
+				enumValueNames[val.Name] = fmt.Sprintf("field %q value %q", name, val.Original)
+			}
+
+			enums = append(enums, *enum)
+		}
+	}
+
+	// Validate no stale lock entries for this domain's context.
+	for _, name := range sortedLockedFieldNames(lockedContext) {
+		if _, ok := contextFields[name]; !ok {
+			return nil, nil, fmt.Errorf("schema lock has stale context entry %q not in domain %q context", name, domainName)
+		}
+	}
+
+	return fields, enums, nil
 }
 
 func validateGoPackage(goPackage string) error {
@@ -130,16 +318,6 @@ func clientMessage() Message {
 			},
 		},
 	}
-}
-
-// lowerContextMessage is a stub pending T4.
-// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite this
-// function to look up proto numbers from the appropriate domain's context map.
-func lowerContextMessage(context map[string]registry.Field, lock Lock) (Message, error) {
-	if len(context) > 0 {
-		return Message{}, fmt.Errorf("lowerContextMessage: per-domain context lowering not yet implemented (see T4)")
-	}
-	return Message{Name: "Context", Fields: []Field{}, Enums: []Enum{}}, nil
 }
 
 func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
@@ -218,7 +396,9 @@ func lowerPropertiesMessage(event registry.Event, lock Lock) (Message, error) {
 	return message, nil
 }
 
-func envelopeMessage(event registry.Event) Message {
+// envelopeMessageWithContext builds an envelope message where the context field
+// references the given contextTypeName (e.g. "UserContext").
+func envelopeMessageWithContext(event registry.Event, contextTypeName string) Message {
 	return Message{
 		Name:        EventMessageName(event),
 		Description: event.Description,
@@ -228,10 +408,14 @@ func envelopeMessage(event registry.Event) Message {
 			{Name: "event_id", Number: envelopeNumbers["event_id"], Type: TypeRef{Scalar: "uuid"}},
 			{Name: "event_ts", Number: envelopeNumbers["event_ts"], Type: TypeRef{Scalar: "timestamp"}},
 			{Name: "client", Number: envelopeNumbers["client"], Type: TypeRef{Message: "Client"}},
-			{Name: "context", Number: envelopeNumbers["context"], Type: TypeRef{Message: "Context"}},
+			{Name: "context", Number: envelopeNumbers["context"], Type: TypeRef{Message: contextTypeName}},
 			{Name: "properties", Number: envelopeNumbers["properties"], Type: TypeRef{Message: PropertiesMessageName(event)}},
 		},
 	}
+}
+
+func envelopeMessage(event registry.Event) Message {
+	return envelopeMessageWithContext(event, "Context")
 }
 
 func lowerField(field registry.Field, number int, path string) (Field, *Enum, error) {
@@ -325,7 +509,7 @@ func validateLockForLowering(reg registry.Registry, lock Lock) error {
 		return fmt.Errorf("schema lock version mismatch: got %d want %d", lock.Version, LockVersion)
 	}
 
-	// Validate context lock entries
+	// Validate context lock entries per domain
 	if err := validateContextLock(reg, lock); err != nil {
 		return err
 	}
@@ -346,10 +530,43 @@ func validateLockForLowering(reg registry.Registry, lock Lock) error {
 	return nil
 }
 
-// validateContextLock is a stub pending T4.
-// T3 replaced Lock.Context with per-domain Lock.Domains; T4 will rewrite this
-// function to validate per-domain context lock entries.
+// validateContextLock validates per-domain context lock entries in lock.Domains.
 func validateContextLock(reg registry.Registry, lock Lock) error {
+	for domainName, domain := range reg.Domains {
+		lockedDomain, _ := lock.Domains[domainName]
+
+		for _, name := range sortedRegistryFieldNames(domain.Context) {
+			locked, ok := lockedDomain.Context[name]
+			if !ok {
+				// Missing lock entry handled by lowerDomainContext; skip here to avoid
+				// duplicate error messages.
+				continue
+			}
+
+			// Validate proto number
+			if err := validateProtoNumber("context."+name, locked.ProtoNumber); err != nil {
+				return err
+			}
+
+			// Validate StableID
+			if locked.StableID != name {
+				return fmt.Errorf("schema lock StableID mismatch for context.%s: lock has %q, expected %q", name, locked.StableID, name)
+			}
+		}
+
+		// Check for duplicate proto numbers in this domain's context.
+		byNumber := make(map[int]string)
+		if lockedDomain.Context != nil {
+			for _, name := range sortedLockedFieldNames(lockedDomain.Context) {
+				locked := lockedDomain.Context[name]
+				if existing, exists := byNumber[locked.ProtoNumber]; exists {
+					return fmt.Errorf("context has duplicate proto number %d used by both %q and %q", locked.ProtoNumber, existing, name)
+				}
+				byNumber[locked.ProtoNumber] = name
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -488,9 +705,6 @@ func validateReservedEntries(key string, lockedEvent LockedEvent) error {
 }
 
 func validateNoStaleLockEntries(reg registry.Registry, lock Lock) error {
-	// Note: stale domain/context checks are handled in T4 (Lock.Context was
-	// replaced by per-domain Lock.Domains in T3).
-
 	// Build map of registry events for quick lookup
 	regEvents := make(map[string]registry.Event)
 	for _, event := range reg.Events {

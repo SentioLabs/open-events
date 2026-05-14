@@ -23,6 +23,12 @@ const (
 var goPackagePattern = regexp.MustCompile(`^[a-z0-9]+([._/-][a-z0-9]+)*$`)
 
 // Render writes protobuf backend files for reg into outDir.
+//
+// When reg.DomainSpecs is populated (T4+ per-domain shape), Render emits:
+//   - <outDir>/<ns-path>/common/v1/common.proto   — shared Client message
+//   - <outDir>/<ns-path>/<domain>/v1/events.proto — per-domain context + events
+//
+// Legacy Files (for backward compatibility) are also emitted when present.
 func Render(reg schemair.Registry, outDir string) error {
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create output directory %q: %w", outDir, err)
@@ -36,6 +42,41 @@ func Render(reg schemair.Registry, outDir string) error {
 	}
 
 	protoRoot := filepath.Join(outDir, "proto")
+
+	// Emit per-domain proto files when DomainSpecs is populated.
+	if len(reg.DomainSpecs) > 0 {
+		nsPath := namespaceToPath(reg.Namespace)
+
+		// Emit common.proto.
+		commonProtoPath := filepath.Join(protoRoot, filepath.FromSlash(nsPath), "common", "v1", "common.proto")
+		commonBytes, err := RenderCommonProto(reg)
+		if err != nil {
+			return fmt.Errorf("render common.proto: %w", err)
+		}
+		if err := os.MkdirAll(filepath.Dir(commonProtoPath), 0o755); err != nil {
+			return fmt.Errorf("create directory for common.proto: %w", err)
+		}
+		if err := os.WriteFile(commonProtoPath, commonBytes, 0o644); err != nil {
+			return fmt.Errorf("write common.proto: %w", err)
+		}
+
+		// Emit per-domain events.proto.
+		for _, ds := range reg.DomainSpecs {
+			domainProtoPath := filepath.Join(protoRoot, filepath.FromSlash(nsPath), ds.Name, "v1", "events.proto")
+			domainBytes, err := RenderDomainProto(reg.Namespace, ds)
+			if err != nil {
+				return fmt.Errorf("render %s/v1/events.proto: %w", ds.Name, err)
+			}
+			if err := os.MkdirAll(filepath.Dir(domainProtoPath), 0o755); err != nil {
+				return fmt.Errorf("create directory for %s/v1/events.proto: %w", ds.Name, err)
+			}
+			if err := os.WriteFile(domainProtoPath, domainBytes, 0o644); err != nil {
+				return fmt.Errorf("write %s/v1/events.proto: %w", ds.Name, err)
+			}
+		}
+	}
+
+	// Emit legacy single-file output (backward compatibility).
 	for _, file := range reg.Files {
 		protoPath, err := resolveProtoOutputPath(protoRoot, file.Path)
 		if err != nil {
@@ -64,6 +105,64 @@ func Render(reg schemair.Registry, outDir string) error {
 	}
 
 	return nil
+}
+
+// namespaceToPath converts a namespace like "com.acme.platform" to "com/acme/platform".
+func namespaceToPath(namespace string) string {
+	return strings.ReplaceAll(namespace, ".", "/")
+}
+
+// RenderCommonProto renders the common.proto file containing shared types (e.g. Client).
+func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
+	nsPath := namespaceToPath(reg.Namespace)
+	pkg := reg.Namespace + ".common.v1"
+
+	var b strings.Builder
+	b.WriteString("syntax = \"proto3\";\n\n")
+	fmt.Fprintf(&b, "package %s;\n\n", pkg)
+
+	if err := renderMessage(&b, reg.CommonSpec.Client); err != nil {
+		return nil, err
+	}
+
+	_ = nsPath // nsPath used for import path in callers; kept here for documentation.
+	return []byte(b.String()), nil
+}
+
+// RenderDomainProto renders the events.proto for a single domain.
+func RenderDomainProto(namespace string, ds schemair.DomainSpec) ([]byte, error) {
+	nsPath := namespaceToPath(namespace)
+	pkg := namespace + "." + ds.Name + ".v1"
+	commonImport := nsPath + "/common/v1/common.proto"
+
+	var b strings.Builder
+	b.WriteString("syntax = \"proto3\";\n\n")
+	fmt.Fprintf(&b, "package %s;\n\n", pkg)
+	fmt.Fprintf(&b, "import %s;\n\n", strconv.Quote(commonImport))
+
+	// Render context message.
+	contextMsg := schemair.Message{
+		Name:   ds.ContextName,
+		Fields: ds.ContextFields,
+		Enums:  ds.ContextEnums,
+	}
+	if err := renderMessage(&b, contextMsg); err != nil {
+		return nil, err
+	}
+
+	// Render event messages (envelope + properties pairs).
+	for _, de := range ds.Events {
+		b.WriteString("\n")
+		if err := renderMessage(&b, de.Envelope); err != nil {
+			return nil, err
+		}
+		b.WriteString("\n")
+		if err := renderMessage(&b, de.Properties); err != nil {
+			return nil, err
+		}
+	}
+
+	return []byte(b.String()), nil
 }
 
 // RenderFile renders one schema IR file as a proto3 file.

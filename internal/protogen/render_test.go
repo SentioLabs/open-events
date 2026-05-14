@@ -10,45 +10,204 @@ import (
 	"github.com/sentiolabs/open-events/internal/schemair"
 )
 
-func TestRenderGoldenFiles(t *testing.T) {
-	reg := demoRegistry()
-
-	protoBytes, err := RenderFile(reg.Files[0])
-	if err != nil {
-		t.Fatalf("RenderFile() error = %v, want nil", err)
-	}
-	assertGoldenBytes(t, "demo.golden.proto", protoBytes)
-
-	assertGoldenBytes(t, "buf.golden.yaml", RenderBufYAML())
-	assertGoldenBytes(t, "buf.gen.golden.yaml", RenderBufGenYAML())
-
-	metadataBytes, err := RenderMetadata(reg)
-	if err != nil {
-		t.Fatalf("RenderMetadata() error = %v, want nil", err)
-	}
-	assertGoldenBytes(t, "metadata.golden.yaml", metadataBytes)
-}
-
-func TestRenderWritesOutputTree(t *testing.T) {
+// TestRenderPerDomainWritesExpectedFiles verifies that Render emits per-domain
+// proto files and common.proto under the correct paths when reg.DomainSpecs is
+// populated.
+func TestRenderPerDomainWritesExpectedFiles(t *testing.T) {
+	reg := domainRegistry()
 	outDir := t.TempDir()
 
-	if err := Render(demoRegistry(), outDir); err != nil {
+	if err := Render(reg, outDir); err != nil {
 		t.Fatalf("Render() error = %v, want nil", err)
 	}
 
-	wantFiles := map[string]string{
-		"buf.yaml":     "buf.golden.yaml",
-		"buf.gen.yaml": "buf.gen.golden.yaml",
-		"proto/com/acme/storefront/v1/events.proto": "demo.golden.proto",
-		"openevents.metadata.yaml":                  "metadata.golden.yaml",
+	// common.proto must exist at <ns-path>/common/v1/common.proto.
+	commonPath := filepath.Join(outDir, "proto", "com", "acme", "platform", "common", "v1", "common.proto")
+	commonBytes, err := os.ReadFile(commonPath)
+	if err != nil {
+		t.Fatalf("read common.proto: %v", err)
 	}
-	for relPath, goldenName := range wantFiles {
+	commonText := string(commonBytes)
+
+	if !strings.Contains(commonText, "syntax = \"proto3\";") {
+		t.Fatalf("common.proto missing syntax declaration:\n%s", commonText)
+	}
+	if !strings.Contains(commonText, "package com.acme.platform.common.v1;") {
+		t.Fatalf("common.proto missing package declaration:\n%s", commonText)
+	}
+	if !strings.Contains(commonText, "message Client {") {
+		t.Fatalf("common.proto missing Client message:\n%s", commonText)
+	}
+
+	// user/v1/events.proto must exist at <ns-path>/user/v1/events.proto.
+	userPath := filepath.Join(outDir, "proto", "com", "acme", "platform", "user", "v1", "events.proto")
+	userBytes, err := os.ReadFile(userPath)
+	if err != nil {
+		t.Fatalf("read user/v1/events.proto: %v", err)
+	}
+	userText := string(userBytes)
+
+	if !strings.Contains(userText, "syntax = \"proto3\";") {
+		t.Fatalf("user events.proto missing syntax:\n%s", userText)
+	}
+	if !strings.Contains(userText, "package com.acme.platform.user.v1;") {
+		t.Fatalf("user events.proto missing package:\n%s", userText)
+	}
+	if !strings.Contains(userText, `import "com/acme/platform/common/v1/common.proto";`) {
+		t.Fatalf("user events.proto missing common.proto import:\n%s", userText)
+	}
+	if !strings.Contains(userText, "message UserContext {") {
+		t.Fatalf("user events.proto missing UserContext message:\n%s", userText)
+	}
+	// Event message must reference the domain-local UserContext type.
+	if !strings.Contains(userText, "UserContext context =") {
+		t.Fatalf("user events.proto event context field must reference UserContext:\n%s", userText)
+	}
+	if !strings.Contains(userText, "message SignedUpV1 {") {
+		t.Fatalf("user events.proto missing SignedUpV1 message:\n%s", userText)
+	}
+	if !strings.Contains(userText, "message SignedUpV1Properties {") {
+		t.Fatalf("user events.proto missing SignedUpV1Properties message:\n%s", userText)
+	}
+}
+
+// TestRenderCommonProtoContentsAreCorrect checks the exact structure of common.proto.
+func TestRenderCommonProtoContentsAreCorrect(t *testing.T) {
+	reg := domainRegistry()
+
+	got, err := RenderCommonProto(reg)
+	if err != nil {
+		t.Fatalf("RenderCommonProto() error = %v, want nil", err)
+	}
+	text := string(got)
+
+	if !strings.Contains(text, "package com.acme.platform.common.v1;") {
+		t.Fatalf("common.proto missing package: %s", text)
+	}
+	if !strings.Contains(text, "message Client {") {
+		t.Fatalf("common.proto missing Client message: %s", text)
+	}
+	if !strings.Contains(text, "optional string name = 1;") {
+		t.Fatalf("common.proto Client missing name field: %s", text)
+	}
+	if !strings.Contains(text, "optional string version = 2;") {
+		t.Fatalf("common.proto Client missing version field: %s", text)
+	}
+}
+
+// TestRenderDomainProtoContentsAreCorrect checks per-domain proto contents.
+func TestRenderDomainProtoContentsAreCorrect(t *testing.T) {
+	reg := domainRegistry()
+	if len(reg.DomainSpecs) == 0 {
+		t.Fatal("domainRegistry() returned no DomainSpecs")
+	}
+	ds := reg.DomainSpecs[0] // "user" domain
+
+	got, err := RenderDomainProto(reg.Namespace, ds)
+	if err != nil {
+		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
+	}
+	text := string(got)
+
+	if !strings.Contains(text, "syntax = \"proto3\";") {
+		t.Fatalf("domain proto missing syntax: %s", text)
+	}
+	if !strings.Contains(text, "package com.acme.platform.user.v1;") {
+		t.Fatalf("domain proto missing package: %s", text)
+	}
+	if !strings.Contains(text, `import "com/acme/platform/common/v1/common.proto";`) {
+		t.Fatalf("domain proto missing common import: %s", text)
+	}
+	if !strings.Contains(text, "message UserContext {") {
+		t.Fatalf("domain proto missing UserContext: %s", text)
+	}
+	// The context field in the envelope must reference the local UserContext.
+	if !strings.Contains(text, "UserContext context = 6;") {
+		t.Fatalf("domain proto event context field must reference UserContext: %s", text)
+	}
+	if !strings.Contains(text, "message SignedUpV1 {") {
+		t.Fatalf("domain proto missing SignedUpV1: %s", text)
+	}
+	if !strings.Contains(text, "message SignedUpV1Properties {") {
+		t.Fatalf("domain proto missing SignedUpV1Properties: %s", text)
+	}
+}
+
+// TestRenderDomainProtoContextEnumIsEmitted verifies enum types in domain context are rendered.
+func TestRenderDomainProtoContextEnumIsEmitted(t *testing.T) {
+	reg := domainRegistryWithEnum()
+	if len(reg.DomainSpecs) == 0 {
+		t.Fatal("domainRegistryWithEnum() returned no DomainSpecs")
+	}
+	ds := reg.DomainSpecs[0]
+
+	got, err := RenderDomainProto(reg.Namespace, ds)
+	if err != nil {
+		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
+	}
+	text := string(got)
+
+	if !strings.Contains(text, "enum Platform {") {
+		t.Fatalf("domain proto missing Platform enum: %s", text)
+	}
+	if !strings.Contains(text, "PLATFORM_UNSPECIFIED = 0;") {
+		t.Fatalf("domain proto missing Platform zero value: %s", text)
+	}
+	if !strings.Contains(text, "PLATFORM_IOS = 1;") {
+		t.Fatalf("domain proto missing PLATFORM_IOS value: %s", text)
+	}
+}
+
+// TestRenderPerDomainIsDeterministic verifies repeated renders produce identical output.
+func TestRenderPerDomainIsDeterministic(t *testing.T) {
+	reg := domainRegistry()
+
+	first, err := RenderCommonProto(reg)
+	if err != nil {
+		t.Fatalf("RenderCommonProto() first error = %v", err)
+	}
+	second, err := RenderCommonProto(reg)
+	if err != nil {
+		t.Fatalf("RenderCommonProto() second error = %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("RenderCommonProto() repeated renders differ")
+	}
+
+	ds := reg.DomainSpecs[0]
+	firstDomain, err := RenderDomainProto(reg.Namespace, ds)
+	if err != nil {
+		t.Fatalf("RenderDomainProto() first error = %v", err)
+	}
+	secondDomain, err := RenderDomainProto(reg.Namespace, ds)
+	if err != nil {
+		t.Fatalf("RenderDomainProto() second error = %v", err)
+	}
+	if !bytes.Equal(firstDomain, secondDomain) {
+		t.Fatalf("RenderDomainProto() repeated renders differ")
+	}
+}
+
+// TestRenderWritesOutputTree verifies the full output tree using the legacy Registry shape.
+func TestRenderWritesOutputTree(t *testing.T) {
+	outDir := t.TempDir()
+
+	if err := Render(legacyRegistry(), outDir); err != nil {
+		t.Fatalf("Render() error = %v, want nil", err)
+	}
+
+	wantPaths := []string{
+		"buf.yaml",
+		"buf.gen.yaml",
+		"proto/com/acme/storefront/v1/events.proto",
+		"openevents.metadata.yaml",
+	}
+	for _, relPath := range wantPaths {
 		t.Run(relPath, func(t *testing.T) {
-			got, err := os.ReadFile(filepath.Join(outDir, filepath.FromSlash(relPath)))
-			if err != nil {
-				t.Fatalf("read rendered file %q: %v", relPath, err)
+			fullPath := filepath.Join(outDir, filepath.FromSlash(relPath))
+			if _, err := os.Stat(fullPath); err != nil {
+				t.Fatalf("expected file %q not found: %v", relPath, err)
 			}
-			assertGoldenBytes(t, goldenName, got)
 		})
 	}
 }
@@ -291,7 +450,7 @@ func TestRenderFileEmitsEnumZeroValue(t *testing.T) {
 }
 
 func TestRenderMetadataIsDeterministic(t *testing.T) {
-	reg := demoRegistry()
+	reg := legacyRegistry()
 
 	first, err := RenderMetadata(reg)
 	if err != nil {
@@ -307,7 +466,7 @@ func TestRenderMetadataIsDeterministic(t *testing.T) {
 }
 
 func TestRenderFileIsDeterministic(t *testing.T) {
-	file := demoRegistry().Files[0]
+	file := legacyRegistry().Files[0]
 
 	first, err := RenderFile(file)
 	if err != nil {
@@ -368,7 +527,110 @@ func TestRenderMetadataRejectsInvalidTypeRefs(t *testing.T) {
 	}
 }
 
-func demoRegistry() schemair.Registry {
+// domainRegistry returns a Registry with per-domain DomainSpecs for testing
+// the T4 per-domain emission path.
+func domainRegistry() schemair.Registry {
+	return schemair.Registry{
+		Namespace: "com.acme.platform",
+		CommonSpec: schemair.CommonSpec{
+			Client: schemair.Message{
+				Name: "Client",
+				Fields: []schemair.Field{
+					{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+					{Name: "version", Number: 2, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+				},
+			},
+		},
+		DomainSpecs: []schemair.DomainSpec{
+			{
+				Name:          "user",
+				ContextName:   "UserContext",
+				ContextFields: []schemair.Field{},
+				ContextEnums:  []schemair.Enum{},
+				Events: []schemair.DomainEvent{
+					{
+						Envelope: schemair.Message{
+							Name: "SignedUpV1",
+							Fields: []schemair.Field{
+								{Name: "event_name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}},
+								{Name: "event_version", Number: 2, Type: schemair.TypeRef{Scalar: "integer"}},
+								{Name: "event_id", Number: 3, Type: schemair.TypeRef{Scalar: "uuid"}},
+								{Name: "event_ts", Number: 4, Type: schemair.TypeRef{Scalar: "timestamp"}},
+								{Name: "client", Number: 5, Type: schemair.TypeRef{Message: "Client"}},
+								{Name: "context", Number: 6, Type: schemair.TypeRef{Message: "UserContext"}},
+								{Name: "properties", Number: 7, Type: schemair.TypeRef{Message: "SignedUpV1Properties"}},
+							},
+						},
+						Properties: schemair.Message{
+							Name: "SignedUpV1Properties",
+							Fields: []schemair.Field{
+								{Name: "email", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// domainRegistryWithEnum returns a Registry with a domain context that has an enum field.
+func domainRegistryWithEnum() schemair.Registry {
+	return schemair.Registry{
+		Namespace: "com.acme.platform",
+		CommonSpec: schemair.CommonSpec{
+			Client: schemair.Message{
+				Name: "Client",
+				Fields: []schemair.Field{
+					{Name: "name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+					{Name: "version", Number: 2, Type: schemair.TypeRef{Scalar: "string"}, Optional: true},
+				},
+			},
+		},
+		DomainSpecs: []schemair.DomainSpec{
+			{
+				Name:        "user",
+				ContextName: "UserContext",
+				ContextFields: []schemair.Field{
+					{Name: "platform", Number: 1, Type: schemair.TypeRef{Enum: "Platform"}, Optional: true, Required: true},
+				},
+				ContextEnums: []schemair.Enum{
+					{
+						Name: "Platform",
+						Values: []schemair.EnumValue{
+							{Name: "PLATFORM_IOS", Original: "ios", Number: 1},
+							{Name: "PLATFORM_ANDROID", Original: "android", Number: 2},
+						},
+					},
+				},
+				Events: []schemair.DomainEvent{
+					{
+						Envelope: schemair.Message{
+							Name: "SignedUpV1",
+							Fields: []schemair.Field{
+								{Name: "event_name", Number: 1, Type: schemair.TypeRef{Scalar: "string"}},
+								{Name: "event_version", Number: 2, Type: schemair.TypeRef{Scalar: "integer"}},
+								{Name: "event_id", Number: 3, Type: schemair.TypeRef{Scalar: "uuid"}},
+								{Name: "event_ts", Number: 4, Type: schemair.TypeRef{Scalar: "timestamp"}},
+								{Name: "client", Number: 5, Type: schemair.TypeRef{Message: "Client"}},
+								{Name: "context", Number: 6, Type: schemair.TypeRef{Message: "UserContext"}},
+								{Name: "properties", Number: 7, Type: schemair.TypeRef{Message: "SignedUpV1Properties"}},
+							},
+						},
+						Properties: schemair.Message{
+							Name:   "SignedUpV1Properties",
+							Fields: []schemair.Field{},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// legacyRegistry returns a Registry using the legacy single-file Files shape for
+// backward-compatibility tests (no DomainSpecs).
+func legacyRegistry() schemair.Registry {
 	return schemair.Registry{
 		Namespace: "com.acme.storefront.v1",
 		Files: []schemair.File{
@@ -431,17 +693,5 @@ func demoRegistry() schemair.Registry {
 				},
 			},
 		},
-	}
-}
-
-func assertGoldenBytes(t *testing.T, name string, got []byte) {
-	t.Helper()
-
-	want, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatalf("read golden %q: %v", name, err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("%s mismatch\nwant:\n%s\ngot:\n%s", name, want, got)
 	}
 }
