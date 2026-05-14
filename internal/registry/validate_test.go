@@ -1,270 +1,426 @@
-package registry
+package registry_test
 
 import (
-	"fmt"
-	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/sentiolabs/open-events/internal/registry"
+	"github.com/sentiolabs/open-events/internal/registry/testfx"
 )
 
-func validRegistry() Registry {
-	return Registry{
-		Version:   SupportedVersion,
-		Namespace: "com.example.product",
-		Package: PackageConfig{
-			Go:     "github.com/example/product/events",
-			Python: "example_product.events",
+// happyPathRoot builds a valid registry tree with two domains for use in tests.
+func happyPathRoot(t *testing.T) string {
+	t.Helper()
+	return testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Owner("infra", "infra@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("user signed up").Done().
+		Done().
+		Domain("device").
+		Owner("infra").
+		Context("device_id", registry.FieldTypeString, true, registry.PIIPseudonymous).
+		Action([]string{"info"}, "connected").Version(1).Status("active").Description("device connected").Done().
+		Done().
+		Write(t)
+}
+
+// loadOrFatal calls Load and fatals if there are load diagnostics.
+func loadOrFatal(t *testing.T, root string) registry.Registry {
+	t.Helper()
+	reg, diags := registry.Load(root)
+	if diags.HasErrors() {
+		t.Fatalf("load failed: %v", diags.Error())
+	}
+	return reg
+}
+
+// --- Happy path ---
+
+func TestValidate_HappyPath(t *testing.T) {
+	reg := loadOrFatal(t, happyPathRoot(t))
+	diags := registry.Validate(reg)
+	if diags.HasErrors() {
+		t.Fatalf("expected no diagnostics, got: %v", diags.Error())
+	}
+}
+
+// --- Structural rules ---
+
+func TestValidate_EmptyDomains(t *testing.T) {
+	// A registry with no domains should produce an error.
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Write(t)
+
+	reg := loadOrFatal(t, root)
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for empty domains, got none")
+	}
+	if !containsDiag(diags, "", "domain") {
+		t.Fatalf("expected diagnostic about domains; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_NonSnakeCasePathSegment(t *testing.T) {
+	// Domain names that violate snake_case should produce an error.
+	// We build a registry manually to inject an event with a bad path segment.
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"UserDomain": {Name: "UserDomain", Owner: "growth"},
 		},
-		Context: map[string]Field{
-			"platform": {
-				Name:   "platform",
-				Type:   FieldTypeEnum,
-				PII:    PIINone,
-				Values: []string{"ios", "android", "web"},
-			},
-			"tenant_id": {
-				Name: "tenant_id",
-				Type: FieldTypeString,
-				PII:  PIINone,
-			},
-		},
-		Events: []Event{
+		Events: []registry.Event{
 			{
-				Name:    "user.signed_up",
+				Name:    "UserDomain.auth.signup",
 				Version: 1,
 				Status:  "active",
-				Properties: map[string]Field{
-					"plan": {
-						Name: "plan",
-						Type: FieldTypeString,
-						PII:  PIINone,
-					},
-					"profile": {
-						Name: "profile",
-						Type: FieldTypeObject,
-						PII:  PIINone,
-						Properties: map[string]Field{
-							"age": {
-								Name: "age",
-								Type: FieldTypeInteger,
-								PII:  PIINone,
-							},
-						},
-					},
-					"signup_method": {
-						Name:   "signup_method",
-						Type:   FieldTypeEnum,
-						PII:    PIINone,
-						Values: []string{"email", "google", "apple"},
-					},
-					"tags": {
-						Name: "tags",
-						Type: FieldTypeArray,
-						PII:  PIINone,
-						Items: &Field{
-							Name: "items",
-							Type: FieldTypeString,
-							PII:  PIINone,
-						},
+				Domain:  "UserDomain",
+				Path:    []string{"UserDomain", "auth"},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for non-snake_case path segment, got none")
+	}
+	if !containsDiag(diags, "", "snake_case") {
+		t.Fatalf("expected diagnostic about snake_case; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_DepthTooShallow(t *testing.T) {
+	// Path with only 1 segment (domain only, no category) means depth < 2.
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user"}, // only 1 segment = depth < 2
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for depth < 2, got none")
+	}
+	if !containsDiag(diags, "", "depth") {
+		t.Fatalf("expected diagnostic about depth; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_DepthTooDeep(t *testing.T) {
+	// Path with 5 segments means event name would have 6 parts = depth > 4.
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.a.b.c.d.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "a", "b", "c", "d"}, // 5 segments = depth > 4
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for depth > 4, got none")
+	}
+	if !containsDiag(diags, "", "depth") {
+		t.Fatalf("expected diagnostic about depth; got: %v", diags.Error())
+	}
+}
+
+// --- Referential rules ---
+
+func TestValidate_UndeclaredDomainOwner(t *testing.T) {
+	root := testfx.New().
+		Owner("growth", "g@example.com").
+		Domain("user").
+		Owner("nonexistent").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("s").Done().
+		Done().
+		Write(t)
+
+	reg := loadOrFatal(t, root)
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected validation error for undeclared domain owner")
+	}
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "nonexistent") && strings.Contains(d.Location, "user/domain.yml") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected location user/domain.yml and 'nonexistent' in message; got %v", diags.Error())
+	}
+}
+
+func TestValidate_UndeclaredEventOwner(t *testing.T) {
+	// Event-level owner that doesn't match any declared owner slug.
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Owner:   "phantom-team",
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for undeclared event owner, got none")
+	}
+	if !containsDiag(diags, "", "phantom-team") {
+		t.Fatalf("expected diagnostic mentioning 'phantom-team'; got: %v", diags.Error())
+	}
+}
+
+// --- Uniqueness rules ---
+
+func TestValidate_DuplicateComposedEventName(t *testing.T) {
+	// Two events with the same name@version should produce a uniqueness error.
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+			},
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for duplicate composed event name, got none")
+	}
+	if !containsDiag(diags, "user.auth.signup@1", "") {
+		t.Fatalf("expected diagnostic with location 'user.auth.signup@1'; got: %v", diags.Error())
+	}
+}
+
+// --- Field-level rules (carried over) ---
+
+func TestValidate_InvalidFieldType(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Properties: map[string]registry.Field{
+					"plan": {Name: "plan", Type: registry.FieldType("money"), PII: registry.PIINone},
+				},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for invalid field type, got none")
+	}
+	if !containsDiag(diags, "user/auth/signup.yml:properties.plan.type", "") {
+		t.Fatalf("expected diagnostic with file path location; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_MissingArrayItems(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Properties: map[string]registry.Field{
+					"tags": {Name: "tags", Type: registry.FieldTypeArray, PII: registry.PIINone},
+				},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for missing array items, got none")
+	}
+	if !containsDiag(diags, "user/auth/signup.yml:properties.tags.items", "") {
+		t.Fatalf("expected diagnostic with file path location for array items; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_MissingObjectProperties(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Properties: map[string]registry.Field{
+					"profile": {Name: "profile", Type: registry.FieldTypeObject, PII: registry.PIINone},
+				},
+			},
+		},
+	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for missing object properties, got none")
+	}
+	if !containsDiag(diags, "user/auth/signup.yml:properties.profile.properties", "") {
+		t.Fatalf("expected diagnostic with file path location for object properties; got: %v", diags.Error())
+	}
+}
+
+func TestValidate_DuplicateEnumValues(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Properties: map[string]registry.Field{
+					"method": {
+						Name:   "method",
+						Type:   registry.FieldTypeEnum,
+						PII:    registry.PIINone,
+						Values: []string{"email", "email"},
 					},
 				},
 			},
 		},
 	}
-}
-
-func TestValidateAcceptsValidRegistry(t *testing.T) {
-	if diags := Validate(validRegistry()); diags.HasErrors() {
-		t.Fatalf("Validate(validRegistry()) diagnostics = %v", diags)
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for duplicate enum values, got none")
+	}
+	if !containsDiag(diags, "user/auth/signup.yml:properties.method.values[1]", "") {
+		t.Fatalf("expected diagnostic with file path location for duplicate enum; got: %v", diags.Error())
 	}
 }
 
-func TestValidateRequiresTopLevelFields(t *testing.T) {
-	reg := validRegistry()
-	reg.Version = ""
-	reg.Namespace = ""
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "openevents", Message: "openevents is required"},
-		{Location: "namespace", Message: "namespace is required"},
-	})
-}
-
-func TestValidateRejectsUnsupportedVersion(t *testing.T) {
-	reg := validRegistry()
-	reg.Version = "9.9.9"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "openevents", Message: "unsupported openevents version \"9.9.9\""},
-	})
-}
-
-func TestValidateRejectsInvalidPackageNamesWhenPresent(t *testing.T) {
-	reg := validRegistry()
-	reg.Package.Go = "github.com/example/product events"
-	reg.Package.Python = "example-product.events"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "package.go", Message: "package.go must be a valid Go import path"},
-		{Location: "package.python", Message: "package.python must be a valid Python package name"},
-	})
-}
-
-func TestValidateRejectsGoPackageKeywordBasename(t *testing.T) {
-	reg := validRegistry()
-	reg.Package.Go = "github.com/example/type"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "package.go", Message: "package.go basename must not be a Go keyword"},
-	})
-}
-
-func TestValidateRejectsSingleSegmentGoPackage(t *testing.T) {
-	reg := validRegistry()
-	reg.Package.Go = "events"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "package.go", Message: "package.go must include at least one '.' or '/' in the import path"},
-	})
-}
-
-func TestValidateRejectsInvalidEventName(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Name = "UserSignedUp"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.UserSignedUp.name", Message: "event name must be lowercase dot-separated identifiers"},
-	})
-}
-
-func TestValidateRejectsInvalidFieldName(t *testing.T) {
-	reg := validRegistry()
-	reg.Context["BadName"] = Field{Name: "BadName", Type: FieldTypeString, PII: PIINone}
-	reg.Events[0].Properties["BadName"] = Field{Name: "BadName", Type: FieldTypeString, PII: PIINone}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "context.BadName", Message: "field name must be snake_case"},
-		{Location: "events.user.signed_up.properties.BadName", Message: "field name must be snake_case"},
-	})
-}
-
-func TestValidateRejectsUnsupportedFieldType(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Properties["plan"] = Field{Name: "plan", Type: FieldType("money"), PII: PIINone}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.user.signed_up.properties.plan.type", Message: "unsupported field type \"money\""},
-	})
-}
-
-func TestValidateRejectsUnsupportedPII(t *testing.T) {
-	reg := validRegistry()
-	reg.Context["tenant_id"] = Field{Name: "tenant_id", Type: FieldTypeString, PII: PIIClassification("secret")}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "context.tenant_id.pii", Message: "unsupported pii classification \"secret\""},
-	})
-}
-
-func TestValidateRejectsBadEnumShapes(t *testing.T) {
-	t.Run("empty values", func(t *testing.T) {
-		reg := validRegistry()
-		reg.Context["platform"] = Field{Name: "platform", Type: FieldTypeEnum, PII: PIINone}
-
-		assertDiagnostics(t, Validate(reg), Diagnostics{
-			{Location: "context.platform.values", Message: "enum fields must define at least one value"},
-		})
-	})
-
-	t.Run("blank values", func(t *testing.T) {
-		reg := validRegistry()
-		reg.Context["platform"] = Field{Name: "platform", Type: FieldTypeEnum, PII: PIINone, Values: []string{""}}
-
-		assertDiagnostics(t, Validate(reg), Diagnostics{
-			{Location: "context.platform.values[0]", Message: "enum values must not be empty"},
-		})
-	})
-
-	t.Run("duplicate values", func(t *testing.T) {
-		reg := validRegistry()
-		reg.Context["platform"] = Field{Name: "platform", Type: FieldTypeEnum, PII: PIINone, Values: []string{"ios", "ios"}}
-
-		assertDiagnostics(t, Validate(reg), Diagnostics{
-			{Location: "context.platform.values[1]", Message: "duplicate enum value \"ios\""},
-		})
-	})
-}
-
-func TestValidateRejectsMissingArrayItems(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Properties["tags"] = Field{Name: "tags", Type: FieldTypeArray, PII: PIINone}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.user.signed_up.properties.tags.items", Message: "array fields must define items"},
-	})
-}
-
-func TestValidateRejectsEmptyObjectProperties(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Properties["profile"] = Field{Name: "profile", Type: FieldTypeObject, PII: PIINone}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.user.signed_up.properties.profile.properties", Message: "object fields must define properties"},
-	})
-}
-
-func TestValidateRejectsDuplicateEventNameVersion(t *testing.T) {
-	reg := validRegistry()
-	reg.Events = append(reg.Events, reg.Events[0])
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events[1]", Message: "duplicate event name/version \"user.signed_up@1\""},
-	})
-}
-
-func TestValidateRejectsUnsupportedStatus(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Status = "paused"
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.user.signed_up.status", Message: "unsupported event status \"paused\""},
-	})
-}
-
-func TestValidateRejectsNonPositiveVersion(t *testing.T) {
-	for _, version := range []int{0, -1} {
-		t.Run(fmt.Sprintf("version=%d", version), func(t *testing.T) {
-			reg := validRegistry()
-			reg.Events[0].Version = version
-
-			assertDiagnostics(t, Validate(reg), Diagnostics{
-				{Location: "events.user.signed_up.version", Message: "event version must be positive"},
-			})
-		})
-	}
-}
-
-func TestValidateRecursesIntoNestedFieldsInSortedOrder(t *testing.T) {
-	reg := validRegistry()
-	reg.Events[0].Properties["profile"] = Field{
-		Name: "profile",
-		Type: FieldTypeObject,
-		PII:  PIINone,
-		Properties: map[string]Field{
-			"z_field": {Name: "z_field", Type: FieldTypeString, PII: PIIClassification("secret")},
-			"a_field": {Name: "a_field", Type: FieldType("money"), PII: PIINone},
+func TestValidate_NonSnakeCaseFieldName(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {Name: "user", Owner: "growth"},
+		},
+		Events: []registry.Event{
+			{
+				Name:    "user.auth.signup",
+				Version: 1,
+				Status:  "active",
+				Domain:  "user",
+				Path:    []string{"user", "auth"},
+				Properties: map[string]registry.Field{
+					"BadName": {Name: "BadName", Type: registry.FieldTypeString, PII: registry.PIINone},
+				},
+			},
 		},
 	}
-
-	assertDiagnostics(t, Validate(reg), Diagnostics{
-		{Location: "events.user.signed_up.properties.profile.properties.a_field.type", Message: "unsupported field type \"money\""},
-		{Location: "events.user.signed_up.properties.profile.properties.z_field.pii", Message: "unsupported pii classification \"secret\""},
-	})
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for non-snake_case field name, got none")
+	}
+	if !containsDiag(diags, "user/auth/signup.yml:properties.BadName", "") {
+		t.Fatalf("expected diagnostic with file path location for bad field name; got: %v", diags.Error())
+	}
 }
 
-func assertDiagnostics(t *testing.T, got, want Diagnostics) {
-	t.Helper()
+// --- Domain context field-level rules ---
 
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Validate() diagnostics = %#v, want %#v\nDiagnostics:\n%s", got, want, got.Error())
+func TestValidate_DomainContextInvalidField(t *testing.T) {
+	reg := registry.Registry{
+		Owners: []registry.Owner{{Team: "growth"}},
+		Domains: map[string]registry.Domain{
+			"user": {
+				Name:  "user",
+				Owner: "growth",
+				Context: map[string]registry.Field{
+					"platform": {Name: "platform", Type: registry.FieldTypeEnum, PII: registry.PIINone, Values: []string{}},
+				},
+			},
+		},
 	}
+	diags := registry.Validate(reg)
+	if !diags.HasErrors() {
+		t.Fatal("expected error for empty enum values in domain context, got none")
+	}
+	if !containsDiag(diags, "user/domain.yml:context.platform.values", "") {
+		t.Fatalf("expected diagnostic with domain file path location; got: %v", diags.Error())
+	}
+}
+
+// --- helpers ---
+
+// containsDiag returns true if any diagnostic matches both location (substring) and message (substring).
+// Pass empty string to skip checking that field.
+func containsDiag(diags registry.Diagnostics, locationSubstr, messageSubstr string) bool {
+	for _, d := range diags {
+		locMatch := locationSubstr == "" || strings.Contains(d.Location, locationSubstr)
+		msgMatch := messageSubstr == "" || strings.Contains(d.Message, messageSubstr)
+		if locMatch && msgMatch {
+			return true
+		}
+	}
+	return false
 }
