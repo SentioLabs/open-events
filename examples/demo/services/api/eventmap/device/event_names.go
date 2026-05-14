@@ -4,9 +4,9 @@ package device
 
 const (
 	DiagnosticsStackUsageV1 = "device.diagnostics.stack_usage@1"
-	IncidentDropV1          = "device.incident.drop@1"
-	IncidentTemperatureV1   = "device.incident.temperature@1"
-	InfoCalibrationV1       = "device.info.calibration@1"
-	InfoHardwareV1          = "device.info.hardware@1"
-	InfoSoftwareV1          = "device.info.software@1"
+	IncidentDropV1 = "device.incident.drop@1"
+	IncidentTemperatureV1 = "device.incident.temperature@1"
+	InfoCalibrationV1 = "device.info.calibration@1"
+	InfoHardwareV1 = "device.info.hardware@1"
+	InfoSoftwareV1 = "device.info.software@1"
 )
