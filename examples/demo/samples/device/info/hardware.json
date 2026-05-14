@@ -6,7 +6,7 @@
     "firmware_version": "3.6.0"
   },
   "unique_id": "ASM-00412",
-  "manufacturing_timestamp": 1704067200,
+  "manufacturing_timestamp": "2024-01-01T00:00:00Z",
   "eeprom_format_version": { "major": 1, "minor": 0 },
   "module_pcb_version": { "major": 2, "minor": 1 },
   "sensor_type": "oxygen",
