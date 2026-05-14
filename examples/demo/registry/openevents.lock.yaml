@@ -195,6 +195,13 @@ events:
             eeprom_format_version:
                 stable_id: eeprom_format_version
                 proto_number: 1
+                properties:
+                    major:
+                        stable_id: major
+                        proto_number: 1
+                    minor:
+                        stable_id: minor
+                        proto_number: 2
             fuel_cell_lot_number:
                 stable_id: fuel_cell_lot_number
                 proto_number: 2
@@ -207,6 +214,13 @@ events:
             module_pcb_version:
                 stable_id: module_pcb_version
                 proto_number: 5
+                properties:
+                    major:
+                        stable_id: major
+                        proto_number: 1
+                    minor:
+                        stable_id: minor
+                        proto_number: 2
             sensor_type:
                 stable_id: sensor_type
                 proto_number: 6
@@ -256,6 +270,43 @@ events:
             versions:
                 stable_id: versions
                 proto_number: 18
+                properties:
+                    app_git_sha:
+                        stable_id: app_git_sha
+                        proto_number: 1
+                    app_semantic_version:
+                        stable_id: app_semantic_version
+                        proto_number: 2
+                    bootloader_build_timestamp:
+                        stable_id: bootloader_build_timestamp
+                        proto_number: 3
+                    bootloader_git_sha:
+                        stable_id: bootloader_git_sha
+                        proto_number: 4
+                    build_type:
+                        stable_id: build_type
+                        proto_number: 5
+                    compile_time:
+                        stable_id: compile_time
+                        proto_number: 6
+                    compiled_by:
+                        stable_id: compiled_by
+                        proto_number: 7
+                    compiled_on_os:
+                        stable_id: compiled_on_os
+                        proto_number: 8
+                    compiler_version:
+                        stable_id: compiler_version
+                        proto_number: 9
+                    hw_platform:
+                        stable_id: hw_platform
+                        proto_number: 10
+                    zephyr_kernel_git_sha:
+                        stable_id: zephyr_kernel_git_sha
+                        proto_number: 11
+                    zephyr_kernel_version:
+                        stable_id: zephyr_kernel_version
+                        proto_number: 12
         reserved:
             - name: app_git_sha
               stable_id: app_git_sha
