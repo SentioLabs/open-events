@@ -1,0 +1,18 @@
+version: 1
+status: active
+description: "Sensor calibration data snapshot from the device."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: concentration
+    type: number
+    required: true
+    pii: none
+  - name: integral
+    type: integer
+    required: true
+    pii: none
+  - name: timestamp
+    type: timestamp
+    required: true
+    pii: none

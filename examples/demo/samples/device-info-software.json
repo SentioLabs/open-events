@@ -1,0 +1,25 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "device_id": "dev-00412",
+    "serial_number": "Z9A2401001",
+    "firmware_version": "3.6.0"
+  },
+  "serial_number": "Z9A2401001",
+  "unique_id": 8473625198234,
+  "product_type": "z9",
+  "pcba_hw_version": "0.3.4",
+  "pcba_hw_manufactured_timestamp_ms": 1710000000000,
+  "zephyr_kernel_version": "3.4.99",
+  "zephyr_kernel_git_sha": "a1b2c3d",
+  "app_semantic_version": "3.6.0",
+  "app_git_sha": "f4e5d6c",
+  "compile_time": "Apr 25 2026 14:30:00",
+  "compiled_on_os": "Linux",
+  "compiled_by": "ci",
+  "compiler_version": "Zephyr 16.0.0",
+  "hw_platform": "z9",
+  "build_type": "customer",
+  "bootloader_git_sha": "1a2b3c4",
+  "bootloader_build_timestamp": 1745000000
+}

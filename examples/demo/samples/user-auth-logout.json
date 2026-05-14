@@ -1,0 +1,9 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-100",
+    "session_id": "s-def",
+    "platform": "ios"
+  },
+  "duration_seconds": 3600
+}

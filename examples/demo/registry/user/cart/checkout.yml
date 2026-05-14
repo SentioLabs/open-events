@@ -1,0 +1,22 @@
+version: 1
+status: active
+description: "User entered the checkout flow."
+producer: storefront-api
+sources: [ios, android, web]
+properties:
+  - name: cart_id
+    type: uuid
+    required: true
+    pii: none
+  - name: item_count
+    type: integer
+    required: true
+    pii: none
+  - name: subtotal_cents
+    type: integer
+    required: true
+    pii: none
+  - name: currency
+    type: string
+    required: true
+    pii: none

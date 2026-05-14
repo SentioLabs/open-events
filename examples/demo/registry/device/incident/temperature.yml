@@ -1,0 +1,18 @@
+version: 1
+status: active
+description: "Device temperature exceeded a configured threshold."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: degrees_c
+    type: number
+    required: true
+    pii: none
+  - name: threshold_c
+    type: number
+    required: true
+    pii: none
+  - name: breach_type
+    type: string
+    required: true
+    pii: none

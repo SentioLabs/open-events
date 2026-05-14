@@ -1,0 +1,20 @@
+description: "Events emitted by IoT devices (z9 firmware)."
+owner: device-platform
+context:
+  fields:
+    - name: tenant_id
+      type: string
+      required: true
+      pii: none
+    - name: device_id
+      type: string
+      required: true
+      pii: pseudonymous
+    - name: serial_number
+      type: string
+      required: false
+      pii: none
+    - name: firmware_version
+      type: string
+      required: false
+      pii: none

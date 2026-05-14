@@ -1,132 +1,18 @@
 openevents: 0.1.0
-namespace: com.acme.storefront
+namespace: com.acme.platform
 
 package:
-  go: github.com/acme/storefront/events
-  python: acme_storefront.events
-
-defaults:
-  queue: storefront-events
-  snowflake:
-    database: ANALYTICS
-    schema: EVENTS
+  go: github.com/sentiolabs/open-events/examples/demo/services/api/eventmap
+  python: consumer
 
 owners:
-  - team: data-platform
-    email: data-platform@example.com
-  - team: growth
-    slack: "#team-growth"
-    email: growth-data@example.com
+  - { team: growth, email: growth-data@example.com, slack: "#team-growth" }
+  - { team: device-platform, email: device-platform@example.com }
 
-context:
-  tenant_id:
-    type: string
-    required: true
-    pii: none
-    description: Stable tenant identifier.
-  user_id:
-    type: string
-    required: false
-    pii: pseudonymous
-    description: Stable internal user identifier.
-  session_id:
-    type: string
-    required: false
-    pii: pseudonymous
-    description: Browser or app session identifier.
-  platform:
-    type: enum
-    values: [ios, android, web, backend]
-    required: true
-    pii: none
-
-events:
-  checkout.started:
-    version: 1
-    status: active
-    description: User began the checkout flow.
-    owner: growth
-    producer: storefront-api
-    sources: [ios, android, web]
-    destination:
-      queue: storefront-events
-      snowflake_table: fact_checkout_started
-    properties:
-      cart_id:
-        type: uuid
-        required: true
-        pii: none
-      item_count:
-        type: integer
-        required: true
-        pii: none
-      subtotal_cents:
-        type: integer
-        required: true
-        pii: none
-      currency:
-        type: enum
-        values: [USD, EUR, GBP]
-        required: true
-        pii: none
-
-  checkout.completed:
-    version: 1
-    status: active
-    description: User completed checkout and payment was accepted.
-    owner: growth
-    producer: storefront-api
-    sources: [ios, android, web]
-    destination:
-      queue: storefront-events
-      snowflake_table: fact_checkout_completed
-    properties:
-      order_id:
-        type: string
-        required: true
-        pii: none
-      cart_id:
-        type: uuid
-        required: true
-        pii: none
-      payment_method:
-        type: enum
-        values: [card, apple_pay, google_pay]
-        required: true
-        pii: none
-      total_cents:
-        type: integer
-        required: true
-        pii: none
-      coupon_code:
-        type: string
-        required: false
-        pii: none
-
-  search.performed:
-    version: 1
-    status: active
-    description: User submitted a storefront search query.
-    owner: data-platform
-    producer: storefront-api
-    sources: [ios, android, web]
-    destination:
-      queue: storefront-events
-      snowflake_table: fact_search_performed
-    properties:
-      query:
-        type: string
-        required: true
-        pii: personal
-        description: Raw search query entered by the user.
-      result_count:
-        type: integer
-        required: true
-        pii: none
-      filters:
-        type: array
-        required: false
-        pii: none
-        items:
-          type: string
-          pii: none
+codegen:
+  languages: [go, python]
+  configs:
+    go:
+      out: ../services/api/eventmap
+    python:
+      out: ../services/consumer/src/consumer

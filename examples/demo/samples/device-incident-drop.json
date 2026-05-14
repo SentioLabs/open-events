@@ -1,0 +1,11 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "device_id": "dev-00412",
+    "serial_number": "Z9A2401001",
+    "firmware_version": "3.6.0"
+  },
+  "peak_acceleration_g": 12.4,
+  "axis": "z",
+  "duration_ms": 85
+}

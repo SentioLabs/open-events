@@ -1,0 +1,14 @@
+version: 1
+status: active
+description: "User completed account signup."
+producer: storefront-api
+sources: [ios, android, web]
+properties:
+  - name: method
+    type: string
+    required: true
+    pii: none
+  - name: plan
+    type: string
+    required: false
+    pii: none

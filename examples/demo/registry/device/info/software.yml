@@ -1,0 +1,74 @@
+version: 1
+status: active
+description: "Software version information reported by the device at startup."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: serial_number
+    type: string
+    required: true
+    pii: none
+  - name: unique_id
+    type: integer
+    required: true
+    pii: none
+  - name: product_type
+    type: string
+    required: true
+    pii: none
+  - name: pcba_hw_version
+    type: string
+    required: true
+    pii: none
+  - name: pcba_hw_manufactured_timestamp_ms
+    type: integer
+    required: true
+    pii: none
+  - name: zephyr_kernel_version
+    type: string
+    required: true
+    pii: none
+  - name: zephyr_kernel_git_sha
+    type: string
+    required: true
+    pii: none
+  - name: app_semantic_version
+    type: string
+    required: true
+    pii: none
+  - name: app_git_sha
+    type: string
+    required: true
+    pii: none
+  - name: compile_time
+    type: string
+    required: true
+    pii: none
+  - name: compiled_on_os
+    type: string
+    required: true
+    pii: none
+  - name: compiled_by
+    type: string
+    required: true
+    pii: none
+  - name: compiler_version
+    type: string
+    required: true
+    pii: none
+  - name: hw_platform
+    type: string
+    required: true
+    pii: none
+  - name: build_type
+    type: string
+    required: true
+    pii: none
+  - name: bootloader_git_sha
+    type: string
+    required: true
+    pii: none
+  - name: bootloader_build_timestamp
+    type: integer
+    required: true
+    pii: none

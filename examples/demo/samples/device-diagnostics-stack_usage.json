@@ -1,0 +1,37 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "device_id": "dev-00412",
+    "serial_number": "Z9A2401001",
+    "firmware_version": "3.6.0"
+  },
+  "thread_count": 3,
+  "highest_usage_percent": 75,
+  "highest_usage_thread": "ble_rx",
+  "threads": [
+    {
+      "name": "main",
+      "stack_size_bytes": 4096,
+      "stack_used_bytes": 2048,
+      "usage_percent": 50,
+      "priority": 0,
+      "state": "running"
+    },
+    {
+      "name": "ble_rx",
+      "stack_size_bytes": 2048,
+      "stack_used_bytes": 1536,
+      "usage_percent": 75,
+      "priority": 7,
+      "state": "suspended"
+    },
+    {
+      "name": "breath_test",
+      "stack_size_bytes": 8192,
+      "stack_used_bytes": 3200,
+      "usage_percent": 39,
+      "priority": 5,
+      "state": "suspended"
+    }
+  ]
+}

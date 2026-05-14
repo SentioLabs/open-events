@@ -1,0 +1,14 @@
+version: 1
+status: active
+description: "User authenticated into their account."
+producer: storefront-api
+sources: [ios, android, web]
+properties:
+  - name: method
+    type: string
+    required: true
+    pii: none
+  - name: success
+    type: boolean
+    required: true
+    pii: none

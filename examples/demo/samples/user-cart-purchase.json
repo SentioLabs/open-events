@@ -1,0 +1,13 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-200",
+    "session_id": "s-ghi",
+    "platform": "web"
+  },
+  "cart_id": "d290f1ee-6c54-4b01-90e6-d701748f0851",
+  "order_id": "ORD-20260101-001",
+  "total_cents": 4999,
+  "payment_method": "card",
+  "coupon_code": "SAVE10"
+}

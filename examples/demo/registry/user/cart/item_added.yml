@@ -1,0 +1,18 @@
+version: 1
+status: active
+description: "User added an item to their cart."
+producer: storefront-api
+sources: [ios, android, web]
+properties:
+  - name: cart_id
+    type: uuid
+    required: true
+    pii: none
+  - name: sku
+    type: string
+    required: true
+    pii: none
+  - name: quantity
+    type: integer
+    required: true
+    pii: none

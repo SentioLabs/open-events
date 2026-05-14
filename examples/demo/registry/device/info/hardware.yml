@@ -1,0 +1,34 @@
+version: 1
+status: active
+description: "Hardware configuration read from device EEPROM at startup."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: unique_id
+    type: string
+    required: true
+    pii: pseudonymous
+  - name: manufacturing_timestamp
+    type: timestamp
+    required: true
+    pii: none
+  - name: eeprom_format_version
+    type: string
+    required: true
+    pii: none
+  - name: module_pcb_version
+    type: string
+    required: true
+    pii: none
+  - name: sensor_type
+    type: string
+    required: true
+    pii: none
+  - name: fuel_cell_lot_number
+    type: string
+    required: false
+    pii: none
+  - name: fuel_cell_vendor
+    type: string
+    required: false
+    pii: none

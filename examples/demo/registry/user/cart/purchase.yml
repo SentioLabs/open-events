@@ -1,0 +1,26 @@
+version: 1
+status: active
+description: "User completed a purchase and payment was accepted."
+producer: storefront-api
+sources: [ios, android, web]
+properties:
+  - name: cart_id
+    type: uuid
+    required: true
+    pii: none
+  - name: order_id
+    type: string
+    required: true
+    pii: none
+  - name: total_cents
+    type: integer
+    required: true
+    pii: none
+  - name: payment_method
+    type: string
+    required: true
+    pii: none
+  - name: coupon_code
+    type: string
+    required: false
+    pii: none

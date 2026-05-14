@@ -1,0 +1,10 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-100",
+    "session_id": "s-abc",
+    "platform": "web"
+  },
+  "method": "email",
+  "plan": "pro"
+}

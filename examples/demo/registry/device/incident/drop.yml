@@ -1,0 +1,18 @@
+version: 1
+status: active
+description: "Device experienced a drop event detected by accelerometer."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: peak_acceleration_g
+    type: number
+    required: true
+    pii: none
+  - name: axis
+    type: string
+    required: true
+    pii: none
+  - name: duration_ms
+    type: integer
+    required: true
+    pii: none

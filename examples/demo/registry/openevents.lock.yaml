@@ -1,19 +1,457 @@
 version: 1
-context:
-    platform:
-        stable_id: platform
-        proto_number: 1
-    session_id:
-        stable_id: session_id
-        proto_number: 2
-    tenant_id:
-        stable_id: tenant_id
-        proto_number: 3
-    user_id:
-        stable_id: user_id
-        proto_number: 4
+domains:
+    device:
+        context:
+            device_id:
+                stable_id: device_id
+                proto_number: 1
+            firmware_version:
+                stable_id: firmware_version
+                proto_number: 2
+            serial_number:
+                stable_id: serial_number
+                proto_number: 3
+            tenant_id:
+                stable_id: tenant_id
+                proto_number: 4
+    user:
+        context:
+            platform:
+                stable_id: platform
+                proto_number: 1
+            session_id:
+                stable_id: session_id
+                proto_number: 2
+            tenant_id:
+                stable_id: tenant_id
+                proto_number: 3
+            user_id:
+                stable_id: user_id
+                proto_number: 4
 events:
-    checkout.completed@1:
+    device.diagnostics.stack_usage@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            highest_usage_percent:
+                stable_id: highest_usage_percent
+                proto_number: 1
+            highest_usage_thread:
+                stable_id: highest_usage_thread
+                proto_number: 2
+            thread_count:
+                stable_id: thread_count
+                proto_number: 3
+            threads:
+                stable_id: threads
+                proto_number: 4
+        reserved: []
+    device.incident.drop@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            axis:
+                stable_id: axis
+                proto_number: 1
+            duration_ms:
+                stable_id: duration_ms
+                proto_number: 2
+            peak_acceleration_g:
+                stable_id: peak_acceleration_g
+                proto_number: 3
+        reserved: []
+    device.incident.temperature@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            breach_type:
+                stable_id: breach_type
+                proto_number: 1
+            degrees_c:
+                stable_id: degrees_c
+                proto_number: 2
+            threshold_c:
+                stable_id: threshold_c
+                proto_number: 3
+        reserved: []
+    device.info.calibration@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            concentration:
+                stable_id: concentration
+                proto_number: 1
+            integral:
+                stable_id: integral
+                proto_number: 2
+            timestamp:
+                stable_id: timestamp
+                proto_number: 3
+        reserved: []
+    device.info.hardware@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            eeprom_format_version:
+                stable_id: eeprom_format_version
+                proto_number: 1
+            fuel_cell_lot_number:
+                stable_id: fuel_cell_lot_number
+                proto_number: 2
+            fuel_cell_vendor:
+                stable_id: fuel_cell_vendor
+                proto_number: 3
+            manufacturing_timestamp:
+                stable_id: manufacturing_timestamp
+                proto_number: 4
+            module_pcb_version:
+                stable_id: module_pcb_version
+                proto_number: 5
+            sensor_type:
+                stable_id: sensor_type
+                proto_number: 6
+            unique_id:
+                stable_id: unique_id
+                proto_number: 7
+        reserved: []
+    device.info.software@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            app_git_sha:
+                stable_id: app_git_sha
+                proto_number: 1
+            app_semantic_version:
+                stable_id: app_semantic_version
+                proto_number: 2
+            bootloader_build_timestamp:
+                stable_id: bootloader_build_timestamp
+                proto_number: 3
+            bootloader_git_sha:
+                stable_id: bootloader_git_sha
+                proto_number: 4
+            build_type:
+                stable_id: build_type
+                proto_number: 5
+            compile_time:
+                stable_id: compile_time
+                proto_number: 6
+            compiled_by:
+                stable_id: compiled_by
+                proto_number: 7
+            compiled_on_os:
+                stable_id: compiled_on_os
+                proto_number: 8
+            compiler_version:
+                stable_id: compiler_version
+                proto_number: 9
+            hw_platform:
+                stable_id: hw_platform
+                proto_number: 10
+            pcba_hw_manufactured_timestamp_ms:
+                stable_id: pcba_hw_manufactured_timestamp_ms
+                proto_number: 11
+            pcba_hw_version:
+                stable_id: pcba_hw_version
+                proto_number: 12
+            product_type:
+                stable_id: product_type
+                proto_number: 13
+            serial_number:
+                stable_id: serial_number
+                proto_number: 14
+            unique_id:
+                stable_id: unique_id
+                proto_number: 15
+            zephyr_kernel_git_sha:
+                stable_id: zephyr_kernel_git_sha
+                proto_number: 16
+            zephyr_kernel_version:
+                stable_id: zephyr_kernel_version
+                proto_number: 17
+        reserved: []
+    user.auth.login@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            method:
+                stable_id: method
+                proto_number: 1
+            success:
+                stable_id: success
+                proto_number: 2
+        reserved: []
+    user.auth.logout@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            duration_seconds:
+                stable_id: duration_seconds
+                proto_number: 1
+        reserved: []
+    user.auth.signup@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            method:
+                stable_id: method
+                proto_number: 1
+            plan:
+                stable_id: plan
+                proto_number: 2
+        reserved: []
+    user.cart.checkout@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            cart_id:
+                stable_id: cart_id
+                proto_number: 1
+            currency:
+                stable_id: currency
+                proto_number: 2
+            item_count:
+                stable_id: item_count
+                proto_number: 3
+            subtotal_cents:
+                stable_id: subtotal_cents
+                proto_number: 4
+        reserved: []
+    user.cart.item_added@1:
+        envelope:
+            client:
+                stable_id: client
+                proto_number: 5
+            context:
+                stable_id: context
+                proto_number: 6
+            event_id:
+                stable_id: event_id
+                proto_number: 3
+            event_name:
+                stable_id: event_name
+                proto_number: 1
+            event_ts:
+                stable_id: event_ts
+                proto_number: 4
+            event_version:
+                stable_id: event_version
+                proto_number: 2
+            properties:
+                stable_id: properties
+                proto_number: 7
+        properties:
+            cart_id:
+                stable_id: cart_id
+                proto_number: 1
+            quantity:
+                stable_id: quantity
+                proto_number: 2
+            sku:
+                stable_id: sku
+                proto_number: 3
+        reserved: []
+    user.cart.purchase@1:
         envelope:
             client:
                 stable_id: client
@@ -52,75 +490,4 @@ events:
             total_cents:
                 stable_id: total_cents
                 proto_number: 5
-        reserved: []
-    checkout.started@1:
-        envelope:
-            client:
-                stable_id: client
-                proto_number: 5
-            context:
-                stable_id: context
-                proto_number: 6
-            event_id:
-                stable_id: event_id
-                proto_number: 3
-            event_name:
-                stable_id: event_name
-                proto_number: 1
-            event_ts:
-                stable_id: event_ts
-                proto_number: 4
-            event_version:
-                stable_id: event_version
-                proto_number: 2
-            properties:
-                stable_id: properties
-                proto_number: 7
-        properties:
-            cart_id:
-                stable_id: cart_id
-                proto_number: 1
-            currency:
-                stable_id: currency
-                proto_number: 2
-            item_count:
-                stable_id: item_count
-                proto_number: 3
-            subtotal_cents:
-                stable_id: subtotal_cents
-                proto_number: 4
-        reserved: []
-    search.performed@1:
-        envelope:
-            client:
-                stable_id: client
-                proto_number: 5
-            context:
-                stable_id: context
-                proto_number: 6
-            event_id:
-                stable_id: event_id
-                proto_number: 3
-            event_name:
-                stable_id: event_name
-                proto_number: 1
-            event_ts:
-                stable_id: event_ts
-                proto_number: 4
-            event_version:
-                stable_id: event_version
-                proto_number: 2
-            properties:
-                stable_id: properties
-                proto_number: 7
-        properties:
-            filters:
-                stable_id: filters
-                proto_number: 1
-            query:
-                stable_id: query
-                proto_number: 2
-            result_count:
-                stable_id: result_count
-                proto_number: 3
         reserved: []

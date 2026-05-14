@@ -1,0 +1,20 @@
+description: "Events emitted by end users via web/mobile apps."
+owner: growth
+context:
+  fields:
+    - name: tenant_id
+      type: string
+      required: true
+      pii: none
+    - name: user_id
+      type: string
+      required: false
+      pii: pseudonymous
+    - name: session_id
+      type: string
+      required: false
+      pii: pseudonymous
+    - name: platform
+      type: string
+      required: true
+      pii: none

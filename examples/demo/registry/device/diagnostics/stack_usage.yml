@@ -1,0 +1,22 @@
+version: 1
+status: active
+description: "Per-thread RTOS stack usage snapshot from the device."
+producer: z9-firmware
+sources: [backend]
+properties:
+  - name: thread_count
+    type: integer
+    required: true
+    pii: none
+  - name: highest_usage_percent
+    type: integer
+    required: true
+    pii: none
+  - name: highest_usage_thread
+    type: string
+    required: true
+    pii: none
+  - name: threads
+    type: string
+    required: true
+    pii: none

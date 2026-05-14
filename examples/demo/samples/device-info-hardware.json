@@ -1,0 +1,15 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "device_id": "dev-00412",
+    "serial_number": "Z9A2401001",
+    "firmware_version": "3.6.0"
+  },
+  "unique_id": "ASM-00412",
+  "manufacturing_timestamp": 1704067200,
+  "eeprom_format_version": "1.0",
+  "module_pcb_version": "2.1",
+  "sensor_type": "oxygen",
+  "fuel_cell_lot_number": "FC-2024-0042",
+  "fuel_cell_vendor": "Membrapor"
+}

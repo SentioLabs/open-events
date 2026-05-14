@@ -1,0 +1,10 @@
+{
+  "context": {
+    "tenant_id": "acme",
+    "user_id": "u-100",
+    "session_id": "s-def",
+    "platform": "ios"
+  },
+  "method": "google",
+  "success": true
+}

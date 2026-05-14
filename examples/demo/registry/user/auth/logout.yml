@@ -1,0 +1,10 @@
+version: 1
+status: active
+description: "User session ended."
+producer: storefront-api
+sources: [ios, android, web, backend]
+properties:
+  - name: duration_seconds
+    type: integer
+    required: true
+    pii: none
