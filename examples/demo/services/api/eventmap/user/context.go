@@ -3,10 +3,10 @@
 package user
 
 type UserContext struct {
-	Platform string `json:"platform"`
+	Platform  string `json:"platform"`
 	SessionId string `json:"session_id,omitempty"`
-	TenantId string `json:"tenant_id"`
-	UserId string `json:"user_id,omitempty"`
+	TenantId  string `json:"tenant_id"`
+	UserId    string `json:"user_id,omitempty"`
 }
 
 // FieldError describes a validation error for a single context field.

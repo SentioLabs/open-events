@@ -45,7 +45,7 @@ func (r AuthSignupRequest) ToProto() eventmap.EnvelopeMessage {
 		EventVersion: 1,
 		EventId:      uuid.NewString(),
 		EventTs:      timestamppb.Now(),
-		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
+		Client:       &commonpb.Client{Name: proto.String(eventmap.ClientName), Version: proto.String(eventmap.ClientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties:   props,
 	}

@@ -19,7 +19,7 @@ type Config struct {
 
 // ParseConfig parses the raw codegen config map for the "python" language target,
 // applying defaults for missing or empty fields.
-func ParseConfig(raw map[string]any, defaultPackage string, registryRoot string) (Config, error) {
+func ParseConfig(raw map[string]any, defaultPackage string) (Config, error) {
 	cfg := Config{
 		Out:     defaultOut,
 		Package: defaultPackage,

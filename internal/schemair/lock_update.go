@@ -297,7 +297,7 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			}
 		}
 		// Check domain reserved fields match.
-		if err := compareReservedFields("domains."+domainName, actualDomain.Reserved, expDomain.Reserved); err != nil {
+		if err := compareReservedFields("domains."+domainName+".reserved", actualDomain.Reserved, expDomain.Reserved); err != nil {
 			return err
 		}
 	}
@@ -343,7 +343,7 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 				return err
 			}
 		}
-		if err := compareReservedFields(key, actualEvent.Reserved, expectedEvent.Reserved); err != nil {
+		if err := compareReservedFields("events."+key+".reserved", actualEvent.Reserved, expectedEvent.Reserved); err != nil {
 			return err
 		}
 		for _, name := range sortedLockedFieldNames(actualEvent.Properties) {
@@ -452,8 +452,7 @@ func sortedLockedDomainKeys(domains map[string]LockedDomain) []string {
 	return keys
 }
 
-func compareReservedFields(eventKey string, actual []ReservedField, expected []ReservedField) error {
-	path := "events." + eventKey + ".reserved"
+func compareReservedFields(path string, actual []ReservedField, expected []ReservedField) error {
 	if err := checkDuplicateReservedNumbers(path, actual); err != nil {
 		return err
 	}
@@ -477,16 +476,16 @@ func compareReservedFields(eventKey string, actual []ReservedField, expected []R
 		key := reservedFieldKey{protoNumber: exp.ProtoNumber, name: exp.Name}
 		actual, ok := actualByKey[key]
 		if !ok {
-			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is missing", eventKey, exp.Name)
+			return fmt.Errorf("schema lock is stale: %s.%s is missing", path, exp.Name)
 		}
 		if actual != exp {
-			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s mismatch", eventKey, exp.Name)
+			return fmt.Errorf("schema lock is stale: %s.%s mismatch", path, exp.Name)
 		}
 	}
 	for _, actual := range sortedReservedFields(actual) {
 		key := reservedFieldKey{protoNumber: actual.ProtoNumber, name: actual.Name}
 		if _, ok := expectedByKey[key]; !ok {
-			return fmt.Errorf("schema lock is stale: events.%s.reserved.%s is not expected", eventKey, actual.Name)
+			return fmt.Errorf("schema lock is stale: %s.%s is not expected", path, actual.Name)
 		}
 	}
 

@@ -1216,6 +1216,52 @@ func TestCheckLockRejectsUnsortedReservedEntries(t *testing.T) {
 	}
 }
 
+// TestCheckLockRejectsUnsortedDomainReservedEntries is the domain-side analog
+// of TestCheckLockRejectsUnsortedReservedEntries. It guards against the C-2
+// regression in which compareReservedFields hardcoded an "events." path prefix
+// and reported domain-reserved drift as nonsensical "events.domains.X.reserved".
+func TestCheckLockRejectsUnsortedDomainReservedEntries(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"account_id": {Name: "account_id"},
+		"region":     {Name: "region"},
+		"tenant_id":  {Name: "tenant_id"},
+	})
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() error = %v", err)
+	}
+
+	// Remove two context fields to produce two reserved (tombstone) entries.
+	reg = domainCtx("user", map[string]registry.Field{
+		"account_id": {Name: "account_id"},
+	})
+	lock, err = UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() after removal error = %v", err)
+	}
+
+	reserved := lock.Domains["user"].Reserved
+	if len(reserved) != 2 {
+		t.Fatalf("Reserved length = %d, want 2", len(reserved))
+	}
+	// Reverse the reserved entries to put them out of sort order.
+	lock.Domains["user"] = LockedDomain{
+		Context:  lock.Domains["user"].Context,
+		Reserved: []ReservedField{reserved[1], reserved[0]},
+	}
+
+	err = CheckLock(lock, reg)
+	if err == nil {
+		t.Fatalf("CheckLock() error = nil, want reserved ordering error")
+	}
+	if !strings.Contains(err.Error(), "domains.user.reserved") || !strings.Contains(err.Error(), "order") {
+		t.Fatalf("CheckLock() error = %q, want domain-reserved order error", err)
+	}
+	if strings.Contains(err.Error(), "events.domains") {
+		t.Fatalf("CheckLock() error = %q, must not contain 'events.domains' nonsense path", err)
+	}
+}
+
 func TestCompareReservedFieldsRejectsDuplicateReservedNumbers(t *testing.T) {
 	actual := []ReservedField{
 		{Name: "legacy_coupon_code", StableID: "legacy_coupon_code", ProtoNumber: 9, Reason: "field removed"},
@@ -1225,7 +1271,7 @@ func TestCompareReservedFieldsRejectsDuplicateReservedNumbers(t *testing.T) {
 		{Name: "coupon_code", StableID: "coupon_code", ProtoNumber: 9, Reason: "field removed"},
 	}
 
-	err := compareReservedFields("checkout.completed@1", actual, expected)
+	err := compareReservedFields("events.checkout.completed@1.reserved", actual, expected)
 	if err == nil {
 		t.Fatalf("compareReservedFields() error = nil, want duplicate reserved number error")
 	}
@@ -1543,7 +1589,7 @@ func TestNestedObjectFieldLocking_StableAcrossUpdates(t *testing.T) {
 		Name:    "device.info.hardware",
 		Version: 1,
 		Properties: map[string]registry.Field{
-			"serial": {Name: "serial", Type: registry.FieldTypeString},
+			"serial":  {Name: "serial", Type: registry.FieldTypeString},
 			"version": versionField,
 		},
 	}

@@ -236,7 +236,7 @@ func decodeActionYAML(path string) (actionYAML, Diagnostics) {
 }
 
 // decodeStrictYAML decodes a YAML document into v using strict mode (unknown fields error).
-func decodeStrictYAML(data []byte, v interface{}) error {
+func decodeStrictYAML(data []byte, v any) error {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	return decoder.Decode(v)
@@ -253,22 +253,22 @@ func dirHasYAMLFiles(dir string) bool {
 		name := d.Name()
 		if strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml") {
 			found = true
-			return fmt.Errorf("stop") // stop walking early
+			return filepath.SkipAll
 		}
 		return nil
 	})
 	return found
 }
 
-// normalizeCodegenConfigs converts the raw map[string]interface{} codegen configs
+// normalizeCodegenConfigs converts the raw map[string]any codegen configs
 // to the typed map[string]map[string]any used by the registry model.
-func normalizeCodegenConfigs(raw map[string]interface{}) map[string]map[string]any {
+func normalizeCodegenConfigs(raw map[string]any) map[string]map[string]any {
 	if raw == nil {
 		return nil
 	}
 	out := make(map[string]map[string]any, len(raw))
 	for lang, v := range raw {
-		if m, ok := v.(map[string]interface{}); ok {
+		if m, ok := v.(map[string]any); ok {
 			typed := make(map[string]any, len(m))
 			for k, val := range m {
 				typed[k] = val

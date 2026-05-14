@@ -3,10 +3,10 @@
 package device
 
 type DeviceContext struct {
-	DeviceId string `json:"device_id"`
+	DeviceId        string `json:"device_id"`
 	FirmwareVersion string `json:"firmware_version,omitempty"`
-	SerialNumber string `json:"serial_number,omitempty"`
-	TenantId string `json:"tenant_id"`
+	SerialNumber    string `json:"serial_number,omitempty"`
+	TenantId        string `json:"tenant_id"`
 }
 
 // FieldError describes a validation error for a single context field.

@@ -5,6 +5,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
+
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
 	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
 	userpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user"
@@ -50,7 +51,7 @@ func (r CartCheckoutRequest) ToProto() eventmap.EnvelopeMessage {
 		EventVersion: 1,
 		EventId:      uuid.NewString(),
 		EventTs:      timestamppb.Now(),
-		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
+		Client:       &commonpb.Client{Name: proto.String(eventmap.ClientName), Version: proto.String(eventmap.ClientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &userpb.UserCartCheckoutV1Properties{
 			CartId:        proto.String(r.CartID),

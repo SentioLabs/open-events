@@ -122,7 +122,7 @@ func buildDomainSpecs(reg registry.Registry, lock Lock, version int) ([]DomainSp
 
 	for _, bundle := range bundles {
 		domainName := bundle.Domain.Name
-		lockedDomain, _ := lock.Domains[domainName]
+		lockedDomain := lock.Domains[domainName]
 
 		// Lower context fields for this domain.
 		contextName := contextMessageName(domainName)
@@ -418,10 +418,6 @@ func envelopeMessageWithContext(event registry.Event, contextTypeName string) Me
 	}
 }
 
-func envelopeMessage(event registry.Event) Message {
-	return envelopeMessageWithContext(event, "Context")
-}
-
 func lowerField(field registry.Field, number int, path string) (Field, *Enum, *Message, error) {
 	lowered := Field{
 		Name:        field.Name,
@@ -643,7 +639,7 @@ func validateLockForLowering(reg registry.Registry, lock Lock) error {
 // validateContextLock validates per-domain context lock entries in lock.Domains.
 func validateContextLock(reg registry.Registry, lock Lock) error {
 	for domainName, domain := range reg.Domains {
-		lockedDomain, _ := lock.Domains[domainName]
+		lockedDomain := lock.Domains[domainName]
 
 		for _, name := range sortedRegistryFieldNames(domain.Context) {
 			locked, ok := lockedDomain.Context[name]

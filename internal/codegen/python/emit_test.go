@@ -6,77 +6,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sentiolabs/open-events/internal/codegen/codegentest"
 	python "github.com/sentiolabs/open-events/internal/codegen/python"
 	"github.com/sentiolabs/open-events/internal/registry"
-	"github.com/sentiolabs/open-events/internal/registry/testfx"
 	"github.com/sentiolabs/open-events/internal/schemair"
 )
 
-// buildTestRegistry constructs a 2-domain registry and a minimal lock using testfx.
+// buildTestRegistry returns the shared 2-domain fixture with an optional
+// user_id context field; the Python emitter relies on the optional field to
+// exercise the X | None / Optional[...] code path.
 func buildTestRegistry(t *testing.T) (registry.Registry, schemair.Lock) {
-	t.Helper()
-
-	root := testfx.New().
-		Namespace("com.acme.platform").
-		Package("github.com/acme/platform/events", "acme.events").
-		Domain("user").
-		Description("user domain").
-		Owner("growth").
-		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
-		Context("user_id", registry.FieldTypeUUID, false, registry.PIIPseudonymous).
-		Action([]string{"auth"}, "signup").
-		Version(1).
-		Status("active").
-		Property("method", registry.FieldTypeString, true, registry.PIINone).
-		Done().
-		Done().
-		Domain("device").
-		Description("device domain").
-		Owner("platform").
-		Context("device_id", registry.FieldTypeString, true, registry.PIINone).
-		Action([]string{"info"}, "hardware").
-		Version(1).
-		Status("active").
-		Property("os", registry.FieldTypeString, true, registry.PIINone).
-		Done().
-		Done().
-		Write(t)
-
-	reg, diags := registry.Load(root)
-	if diags.HasErrors() {
-		t.Fatalf("registry.Load() diagnostics: %v", diags)
-	}
-
-	lock := schemair.Lock{
-		Version: schemair.LockVersion,
-		Domains: map[string]schemair.LockedDomain{
-			"user": {
-				Context: map[string]schemair.LockedField{
-					"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
-					"user_id":   {StableID: "user_id", ProtoNumber: 2},
-				},
-			},
-			"device": {
-				Context: map[string]schemair.LockedField{
-					"device_id": {StableID: "device_id", ProtoNumber: 1},
-				},
-			},
-		},
-		Events: map[string]schemair.LockedEvent{
-			"user.auth.signup@1": {
-				Properties: map[string]schemair.LockedField{
-					"method": {StableID: "method", ProtoNumber: 1},
-				},
-			},
-			"device.info.hardware@1": {
-				Properties: map[string]schemair.LockedField{
-					"os": {StableID: "os", ProtoNumber: 1},
-				},
-			},
-		},
-	}
-
-	return reg, lock
+	return codegentest.TwoDomainRegistry(t, codegentest.TwoDomainOptions{IncludeUserID: true})
 }
 
 func TestEmit_CreatesExpectedFiles(t *testing.T) {

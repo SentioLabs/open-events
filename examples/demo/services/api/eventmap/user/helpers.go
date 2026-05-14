@@ -7,11 +7,6 @@ import (
 	userpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user"
 )
 
-const (
-	clientName    = "demo-api"
-	clientVersion = "0.1.0"
-)
-
 // platformByName maps JSON platform strings to proto enum values.
 var platformByName = map[string]userpb.UserContext_Platform{
 	"ios":     userpb.UserContext_PLATFORM_IOS,

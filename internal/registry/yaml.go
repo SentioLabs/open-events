@@ -21,8 +21,8 @@ type ownerYAML struct {
 }
 
 type codegenYAML struct {
-	Languages []string               `yaml:"languages"`
-	Configs   map[string]interface{} `yaml:"configs"`
+	Languages []string       `yaml:"languages"`
+	Configs   map[string]any `yaml:"configs"`
 }
 
 // domainYAML maps a <domain>/domain.yml file.

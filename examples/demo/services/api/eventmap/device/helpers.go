@@ -7,11 +7,6 @@ import (
 	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
 )
 
-const (
-	clientName    = "demo-api"
-	clientVersion = "0.1.0"
-)
-
 // validateContext validates the device request context.
 func validateContext(c DeviceContext) []eventmap.FieldError {
 	var errs []eventmap.FieldError

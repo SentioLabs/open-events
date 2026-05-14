@@ -86,14 +86,14 @@ func (b *Builder) Write(t *testing.T) string {
 		Owners    []ownerEntry `yaml:"owners,omitempty"`
 		Codegen   codegenYAML  `yaml:"codegen,omitempty"`
 	}
-	root_ := rootYAML{
+	rootDoc := rootYAML{
 		Version:   registry.SupportedVersion,
 		Namespace: b.namespace,
 		Package:   packageYAML{Go: b.goPkg, Python: b.pyPkg},
 		Owners:    b.owners,
 		Codegen:   codegenYAML{Languages: b.languages},
 	}
-	writeYAML(t, filepath.Join(root, "openevents.yaml"), root_)
+	writeYAML(t, filepath.Join(root, "openevents.yaml"), rootDoc)
 
 	// Write each domain
 	for _, db := range b.domains {

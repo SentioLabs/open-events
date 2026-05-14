@@ -6,76 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sentiolabs/open-events/internal/codegen/codegentest"
 	golang "github.com/sentiolabs/open-events/internal/codegen/golang"
 	"github.com/sentiolabs/open-events/internal/registry"
-	"github.com/sentiolabs/open-events/internal/registry/testfx"
 	"github.com/sentiolabs/open-events/internal/schemair"
 )
 
-// buildTestRegistry constructs a 2-domain registry and a minimal lock using testfx.
+// buildTestRegistry returns the shared 2-domain test fixture from codegentest.
 func buildTestRegistry(t *testing.T) (registry.Registry, schemair.Lock) {
-	t.Helper()
-
-	root := testfx.New().
-		Namespace("com.acme.platform").
-		Package("github.com/acme/platform/events", "acme.events").
-		Domain("user").
-		Description("user domain").
-		Owner("growth").
-		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
-		Action([]string{"auth"}, "signup").
-		Version(1).
-		Status("active").
-		Property("method", registry.FieldTypeString, true, registry.PIINone).
-		Done().
-		Done().
-		Domain("device").
-		Description("device domain").
-		Owner("platform").
-		Context("device_id", registry.FieldTypeString, true, registry.PIINone).
-		Action([]string{"info"}, "hardware").
-		Version(1).
-		Status("active").
-		Property("os", registry.FieldTypeString, true, registry.PIINone).
-		Done().
-		Done().
-		Write(t)
-
-	reg, diags := registry.Load(root)
-	if diags.HasErrors() {
-		t.Fatalf("registry.Load() diagnostics: %v", diags)
-	}
-
-	// Build a minimal lock that satisfies the schema for both domains and events.
-	lock := schemair.Lock{
-		Version: schemair.LockVersion,
-		Domains: map[string]schemair.LockedDomain{
-			"user": {
-				Context: map[string]schemair.LockedField{
-					"tenant_id": {StableID: "tenant_id", ProtoNumber: 1},
-				},
-			},
-			"device": {
-				Context: map[string]schemair.LockedField{
-					"device_id": {StableID: "device_id", ProtoNumber: 1},
-				},
-			},
-		},
-		Events: map[string]schemair.LockedEvent{
-			"user.auth.signup@1": {
-				Properties: map[string]schemair.LockedField{
-					"method": {StableID: "method", ProtoNumber: 1},
-				},
-			},
-			"device.info.hardware@1": {
-				Properties: map[string]schemair.LockedField{
-					"os": {StableID: "os", ProtoNumber: 1},
-				},
-			},
-		},
-	}
-
-	return reg, lock
+	return codegentest.TwoDomainRegistry(t, codegentest.TwoDomainOptions{})
 }
 
 func TestEmit_CreatesExpectedFiles(t *testing.T) {
@@ -90,10 +29,8 @@ func TestEmit_CreatesExpectedFiles(t *testing.T) {
 	expectedFiles := []string{
 		filepath.Join(outDir, "user", "event_names.go"),
 		filepath.Join(outDir, "user", "context.go"),
-		filepath.Join(outDir, "user", "events.go"),
 		filepath.Join(outDir, "device", "event_names.go"),
 		filepath.Join(outDir, "device", "context.go"),
-		filepath.Join(outDir, "device", "events.go"),
 	}
 
 	for _, path := range expectedFiles {
@@ -197,29 +134,6 @@ func TestEmit_ContextContent(t *testing.T) {
 	}
 }
 
-func TestEmit_EventsPlaceholder(t *testing.T) {
-	reg, lock := buildTestRegistry(t)
-	outDir := t.TempDir()
-
-	cfg := golang.Config{Out: outDir, Package: "github.com/acme/platform/events"}
-	if err := golang.Emit(reg, lock, cfg); err != nil {
-		t.Fatalf("Emit() error = %v, want nil", err)
-	}
-
-	userEvents, err := os.ReadFile(filepath.Join(outDir, "user", "events.go"))
-	if err != nil {
-		t.Fatalf("read user/events.go: %v", err)
-	}
-	text := string(userEvents)
-
-	if !strings.Contains(text, "TODO") {
-		t.Errorf("user/events.go missing TODO placeholder:\n%s", text)
-	}
-	if !strings.Contains(text, "package user") {
-		t.Errorf("user/events.go missing package declaration:\n%s", text)
-	}
-}
-
 func TestEmit_GeneratedFileHeader(t *testing.T) {
 	reg, lock := buildTestRegistry(t)
 	outDir := t.TempDir()
@@ -232,10 +146,8 @@ func TestEmit_GeneratedFileHeader(t *testing.T) {
 	for _, rel := range []string{
 		"user/event_names.go",
 		"user/context.go",
-		"user/events.go",
 		"device/event_names.go",
 		"device/context.go",
-		"device/events.go",
 	} {
 		data, err := os.ReadFile(filepath.Join(outDir, rel))
 		if err != nil {
@@ -246,4 +158,3 @@ func TestEmit_GeneratedFileHeader(t *testing.T) {
 		}
 	}
 }
-

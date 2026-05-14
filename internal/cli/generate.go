@@ -8,12 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	golang "github.com/sentiolabs/open-events/internal/codegen/golang"
 	python "github.com/sentiolabs/open-events/internal/codegen/python"
 	"github.com/sentiolabs/open-events/internal/constgen"
 	"github.com/sentiolabs/open-events/internal/protogen"
 	"github.com/sentiolabs/open-events/internal/schemair"
-	"github.com/spf13/cobra"
 )
 
 var errGenerationFailed = errors.New("generation failed")
@@ -61,7 +62,7 @@ func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 				rawCfg := reg.Codegen.Configs[lang] // nil if not present — emitter uses defaults
 				switch lang {
 				case "go":
-					cfg, err := golang.ParseConfig(rawCfg, reg.Package.Go, registryPath)
+					cfg, err := golang.ParseConfig(rawCfg, reg.Package.Go)
 					if err != nil {
 						fmt.Fprintln(errOut, err)
 						return errGenerationFailed
@@ -75,7 +76,7 @@ func newGenerateCommand(out io.Writer, errOut io.Writer) *cobra.Command {
 					}
 					emitted = append(emitted, "go")
 				case "python":
-					cfg, err := python.ParseConfig(rawCfg, reg.Package.Python, registryPath)
+					cfg, err := python.ParseConfig(rawCfg, reg.Package.Python)
 					if err != nil {
 						fmt.Fprintln(errOut, err)
 						return errGenerationFailed

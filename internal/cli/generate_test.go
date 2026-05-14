@@ -72,7 +72,7 @@ func TestGenerateUnifiedHappyPathGo(t *testing.T) {
 	genDir := filepath.Join(registryPath, "gen", "go")
 	for _, domain := range []string{"user", "search"} {
 		domDir := filepath.Join(genDir, domain)
-		for _, file := range []string{"event_names.go", "context.go", "events.go"} {
+		for _, file := range []string{"event_names.go", "context.go"} {
 			if _, err := os.Stat(filepath.Join(domDir, file)); err != nil {
 				t.Errorf("expected file %s/%s to exist: %v", domDir, file, err)
 			}

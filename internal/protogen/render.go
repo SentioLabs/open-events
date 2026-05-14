@@ -117,8 +117,8 @@ func namespaceToPath(namespace string) string {
 }
 
 // RenderCommonProto renders the common.proto file containing shared types (e.g. Client).
+// Callers derive the import path with namespaceToPath(reg.Namespace) when wiring imports.
 func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
-	nsPath := namespaceToPath(reg.Namespace)
 	pkg := reg.Namespace + ".common.v1"
 
 	var b strings.Builder
@@ -139,7 +139,6 @@ func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
 		return nil, err
 	}
 
-	_ = nsPath // nsPath used for import path in callers; kept here for documentation.
 	return []byte(b.String()), nil
 }
 

@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/sentiolabs/open-events/internal/registry"
-	"github.com/sentiolabs/open-events/internal/schemair"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/sentiolabs/open-events/internal/registry"
+	"github.com/sentiolabs/open-events/internal/schemair"
 )
 
 var errLockFailed = errors.New("lock failed")
@@ -174,10 +175,10 @@ type lockEventFields struct {
 }
 
 type lockField struct {
-	StableID    string                 `yaml:"stable_id"`
-	ProtoNumber int                    `yaml:"proto_number"`
-	Properties  map[string]lockField   `yaml:"properties,omitempty"`
-	Reserved    []lockReservedField    `yaml:"reserved,omitempty"`
+	StableID    string               `yaml:"stable_id"`
+	ProtoNumber int                  `yaml:"proto_number"`
+	Properties  map[string]lockField `yaml:"properties,omitempty"`
+	Reserved    []lockReservedField  `yaml:"reserved,omitempty"`
 }
 
 type lockReservedField struct {

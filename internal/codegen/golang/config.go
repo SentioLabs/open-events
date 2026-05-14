@@ -1,5 +1,5 @@
 // Package golang emits per-domain Go bindings from an OpenEvents registry.
-// It produces event_names.go, context.go, and events.go under a configurable
+// It produces event_names.go and context.go under a configurable
 // output directory, one subdirectory per domain.
 package golang
 
@@ -19,7 +19,7 @@ type Config struct {
 
 // ParseConfig parses the raw codegen config map for the "go" language target,
 // applying defaults for missing or empty fields.
-func ParseConfig(raw map[string]any, defaultPackage string, registryRoot string) (Config, error) {
+func ParseConfig(raw map[string]any, defaultPackage string) (Config, error) {
 	cfg := Config{
 		Out:     defaultOut,
 		Package: defaultPackage,

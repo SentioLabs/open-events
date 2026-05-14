@@ -7,7 +7,7 @@ import (
 )
 
 func TestParseConfig_Defaults(t *testing.T) {
-	cfg, err := python.ParseConfig(nil, "acme.events", "/registry/root")
+	cfg, err := python.ParseConfig(nil, "acme.events")
 	if err != nil {
 		t.Fatalf("ParseConfig() error = %v, want nil", err)
 	}
@@ -20,7 +20,7 @@ func TestParseConfig_Defaults(t *testing.T) {
 }
 
 func TestParseConfig_EmptyRaw_Defaults(t *testing.T) {
-	cfg, err := python.ParseConfig(map[string]any{}, "acme.events", "/registry/root")
+	cfg, err := python.ParseConfig(map[string]any{}, "acme.events")
 	if err != nil {
 		t.Fatalf("ParseConfig() error = %v, want nil", err)
 	}
@@ -37,7 +37,7 @@ func TestParseConfig_Overrides(t *testing.T) {
 		"out":     "./custom/out",
 		"package": "custom.pkg",
 	}
-	cfg, err := python.ParseConfig(raw, "acme.events", "/registry/root")
+	cfg, err := python.ParseConfig(raw, "acme.events")
 	if err != nil {
 		t.Fatalf("ParseConfig() error = %v, want nil", err)
 	}
@@ -53,7 +53,7 @@ func TestParseConfig_InvalidOutType(t *testing.T) {
 	raw := map[string]any{
 		"out": 42,
 	}
-	_, err := python.ParseConfig(raw, "acme.events", "/registry/root")
+	_, err := python.ParseConfig(raw, "acme.events")
 	if err == nil {
 		t.Fatal("ParseConfig() error = nil, want non-nil for invalid out type")
 	}
@@ -63,7 +63,7 @@ func TestParseConfig_InvalidPackageType(t *testing.T) {
 	raw := map[string]any{
 		"package": true,
 	}
-	_, err := python.ParseConfig(raw, "acme.events", "/registry/root")
+	_, err := python.ParseConfig(raw, "acme.events")
 	if err == nil {
 		t.Fatal("ParseConfig() error = nil, want non-nil for invalid package type")
 	}

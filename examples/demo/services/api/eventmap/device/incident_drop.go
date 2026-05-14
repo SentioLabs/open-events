@@ -5,6 +5,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/google/uuid"
+
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
 	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
 	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
@@ -46,7 +47,7 @@ func (r IncidentDropRequest) ToProto() eventmap.EnvelopeMessage {
 		EventVersion: 1,
 		EventId:      uuid.NewString(),
 		EventTs:      timestamppb.Now(),
-		Client:       &commonpb.Client{Name: proto.String(clientName), Version: proto.String(clientVersion)},
+		Client:       &commonpb.Client{Name: proto.String(eventmap.ClientName), Version: proto.String(eventmap.ClientVersion)},
 		Context:      contextToProto(r.Context),
 		Properties: &devicepb.DeviceIncidentDropV1Properties{
 			PeakAccelerationG: proto.Float64(*r.PeakAccelerationG),

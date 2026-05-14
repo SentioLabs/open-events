@@ -5,6 +5,12 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// ClientName and ClientVersion identify the demo API in published event Client envelopes.
+const (
+	ClientName    = "demo-api"
+	ClientVersion = "0.1.0"
+)
+
 // FieldError describes a single validation failure.
 type FieldError struct {
 	Field   string `json:"field"`
