@@ -10,6 +10,8 @@ type Registry struct {
 	Owners    []Owner
 	Context   map[string]Field
 	Events    []Event
+	Domains   map[string]Domain // NEW
+	Codegen   Codegen           // NEW
 }
 
 type PackageConfig struct {
@@ -48,6 +50,8 @@ type Event struct {
 	Sources     []string
 	Destination Destination
 	Properties  map[string]Field
+	Domain      string   // NEW: first path segment
+	Path        []string // NEW: full path from registry root, excluding action filename
 }
 
 type Field struct {
@@ -87,3 +91,17 @@ const (
 	PIIPersonal     PIIClassification = "personal"
 	PIISensitive    PIIClassification = "sensitive"
 )
+
+// Domain represents a logical grouping of related events within a registry.
+type Domain struct {
+	Name        string
+	Description string
+	Owner       string
+	Context     map[string]Field
+}
+
+// Codegen holds code generation configuration for a registry.
+type Codegen struct {
+	Languages []string
+	Configs   map[string]map[string]any
+}
