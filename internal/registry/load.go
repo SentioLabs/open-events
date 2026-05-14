@@ -233,12 +233,35 @@ func normalizeOwners(in []ownerYAML) []Owner {
 func normalizeFieldList(in []fieldEntryYAML) map[string]Field {
 	out := make(map[string]Field, len(in))
 	for _, f := range in {
-		out[f.Name] = Field{
-			Name:     f.Name,
-			Type:     f.Type,
-			Required: f.Required,
-			PII:      f.PII,
-		}
+		out[f.Name] = normalizeField(f)
 	}
 	return out
+}
+
+// normalizeField converts a single fieldEntryYAML to a Field, recursively
+// populating Values, Items, Properties, and Description.
+func normalizeField(f fieldEntryYAML) Field {
+	field := Field{
+		Name:        f.Name,
+		Type:        f.Type,
+		Required:    f.Required,
+		PII:         f.PII,
+		Description: f.Description,
+		Values:      f.Values,
+	}
+	if f.Items != nil {
+		item := normalizeField(*f.Items)
+		// The validator expects array item fields to have Name == "items".
+		item.Name = "items"
+		field.Items = &item
+	}
+	if len(f.Properties) > 0 {
+		field.Properties = make(map[string]Field, len(f.Properties))
+		for propName, propEntry := range f.Properties {
+			// Properties are keyed by name in the map, so inject the name.
+			propEntry.Name = propName
+			field.Properties[propName] = normalizeField(propEntry)
+		}
+	}
+	return field
 }

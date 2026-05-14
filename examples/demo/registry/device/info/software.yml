@@ -24,51 +24,56 @@ properties:
     type: integer
     required: true
     pii: none
-  - name: zephyr_kernel_version
-    type: string
+  - name: versions
+    type: object
     required: true
     pii: none
-  - name: zephyr_kernel_git_sha
-    type: string
-    required: true
-    pii: none
-  - name: app_semantic_version
-    type: string
-    required: true
-    pii: none
-  - name: app_git_sha
-    type: string
-    required: true
-    pii: none
-  - name: compile_time
-    type: string
-    required: true
-    pii: none
-  - name: compiled_on_os
-    type: string
-    required: true
-    pii: none
-  - name: compiled_by
-    type: string
-    required: true
-    pii: none
-  - name: compiler_version
-    type: string
-    required: true
-    pii: none
-  - name: hw_platform
-    type: string
-    required: true
-    pii: none
-  - name: build_type
-    type: string
-    required: true
-    pii: none
-  - name: bootloader_git_sha
-    type: string
-    required: true
-    pii: none
-  - name: bootloader_build_timestamp
-    type: integer
-    required: true
-    pii: none
+    properties:
+      zephyr_kernel_version:
+        type: string
+        required: true
+        pii: none
+      zephyr_kernel_git_sha:
+        type: string
+        required: true
+        pii: none
+      app_semantic_version:
+        type: string
+        required: true
+        pii: none
+      app_git_sha:
+        type: string
+        required: true
+        pii: none
+      compile_time:
+        type: string
+        required: true
+        pii: none
+      compiled_on_os:
+        type: string
+        required: true
+        pii: none
+      compiled_by:
+        type: string
+        required: true
+        pii: none
+      compiler_version:
+        type: string
+        required: true
+        pii: none
+      hw_platform:
+        type: string
+        required: true
+        pii: none
+      build_type:
+        type: string
+        required: true
+        pii: none
+      bootloader_git_sha:
+        type: string
+        required: true
+        pii: none
+      bootloader_build_timestamp:
+        type: integer
+        required: true
+        pii: none

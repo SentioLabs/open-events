@@ -5,7 +5,8 @@ producer: storefront-api
 sources: [ios, android, web]
 properties:
   - name: method
-    type: string
+    type: enum
+    values: [email, google, apple]
     required: true
     pii: none
   - name: success

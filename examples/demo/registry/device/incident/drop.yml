@@ -9,7 +9,8 @@ properties:
     required: true
     pii: none
   - name: axis
-    type: string
+    type: enum
+    values: [x, y, z]
     required: true
     pii: none
   - name: duration_ms

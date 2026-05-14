@@ -15,6 +15,7 @@ context:
       required: false
       pii: pseudonymous
     - name: platform
-      type: string
+      type: enum
+      values: [ios, android, web]
       required: true
       pii: none

@@ -238,36 +238,6 @@ events:
                 stable_id: properties
                 proto_number: 7
         properties:
-            app_git_sha:
-                stable_id: app_git_sha
-                proto_number: 1
-            app_semantic_version:
-                stable_id: app_semantic_version
-                proto_number: 2
-            bootloader_build_timestamp:
-                stable_id: bootloader_build_timestamp
-                proto_number: 3
-            bootloader_git_sha:
-                stable_id: bootloader_git_sha
-                proto_number: 4
-            build_type:
-                stable_id: build_type
-                proto_number: 5
-            compile_time:
-                stable_id: compile_time
-                proto_number: 6
-            compiled_by:
-                stable_id: compiled_by
-                proto_number: 7
-            compiled_on_os:
-                stable_id: compiled_on_os
-                proto_number: 8
-            compiler_version:
-                stable_id: compiler_version
-                proto_number: 9
-            hw_platform:
-                stable_id: hw_platform
-                proto_number: 10
             pcba_hw_manufactured_timestamp_ms:
                 stable_id: pcba_hw_manufactured_timestamp_ms
                 proto_number: 11
@@ -283,13 +253,58 @@ events:
             unique_id:
                 stable_id: unique_id
                 proto_number: 15
-            zephyr_kernel_git_sha:
-                stable_id: zephyr_kernel_git_sha
-                proto_number: 16
-            zephyr_kernel_version:
-                stable_id: zephyr_kernel_version
-                proto_number: 17
-        reserved: []
+            versions:
+                stable_id: versions
+                proto_number: 18
+        reserved:
+            - name: app_git_sha
+              stable_id: app_git_sha
+              proto_number: 1
+              reason: field removed
+            - name: app_semantic_version
+              stable_id: app_semantic_version
+              proto_number: 2
+              reason: field removed
+            - name: bootloader_build_timestamp
+              stable_id: bootloader_build_timestamp
+              proto_number: 3
+              reason: field removed
+            - name: bootloader_git_sha
+              stable_id: bootloader_git_sha
+              proto_number: 4
+              reason: field removed
+            - name: build_type
+              stable_id: build_type
+              proto_number: 5
+              reason: field removed
+            - name: compile_time
+              stable_id: compile_time
+              proto_number: 6
+              reason: field removed
+            - name: compiled_by
+              stable_id: compiled_by
+              proto_number: 7
+              reason: field removed
+            - name: compiled_on_os
+              stable_id: compiled_on_os
+              proto_number: 8
+              reason: field removed
+            - name: compiler_version
+              stable_id: compiler_version
+              proto_number: 9
+              reason: field removed
+            - name: hw_platform
+              stable_id: hw_platform
+              proto_number: 10
+              reason: field removed
+            - name: zephyr_kernel_git_sha
+              stable_id: zephyr_kernel_git_sha
+              proto_number: 16
+              reason: field removed
+            - name: zephyr_kernel_version
+              stable_id: zephyr_kernel_version
+              proto_number: 17
+              reason: field removed
     user.auth.login@1:
         envelope:
             client:

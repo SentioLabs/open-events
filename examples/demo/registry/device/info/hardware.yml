@@ -13,15 +13,34 @@ properties:
     required: true
     pii: none
   - name: eeprom_format_version
-    type: string
+    type: object
     required: true
     pii: none
+    properties:
+      major:
+        type: integer
+        required: true
+        pii: none
+      minor:
+        type: integer
+        required: true
+        pii: none
   - name: module_pcb_version
-    type: string
+    type: object
     required: true
     pii: none
+    properties:
+      major:
+        type: integer
+        required: true
+        pii: none
+      minor:
+        type: integer
+        required: true
+        pii: none
   - name: sensor_type
-    type: string
+    type: enum
+    values: [unspecified, co, alcohol, oxygen, fuel_cell]
     required: true
     pii: none
   - name: fuel_cell_lot_number

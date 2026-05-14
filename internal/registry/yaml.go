@@ -49,8 +49,12 @@ type actionYAML struct {
 
 // fieldEntryYAML is a single field entry in a list-form context or properties block.
 type fieldEntryYAML struct {
-	Name     string            `yaml:"name"`
-	Type     FieldType         `yaml:"type"`
-	Required bool              `yaml:"required"`
-	PII      PIIClassification `yaml:"pii"`
+	Name        string                    `yaml:"name"`
+	Type        FieldType                 `yaml:"type"`
+	Required    bool                      `yaml:"required"`
+	PII         PIIClassification         `yaml:"pii"`
+	Description string                    `yaml:"description,omitempty"`
+	Values      []string                  `yaml:"values,omitempty"`
+	Items       *fieldEntryYAML           `yaml:"items,omitempty"`
+	Properties  map[string]fieldEntryYAML `yaml:"properties,omitempty"`
 }

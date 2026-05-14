@@ -17,6 +17,35 @@ properties:
     required: true
     pii: none
   - name: threads
-    type: string
+    type: array
     required: true
     pii: none
+    items:
+      type: object
+      pii: none
+      properties:
+        name:
+          type: string
+          required: true
+          pii: none
+        stack_size_bytes:
+          type: integer
+          required: true
+          pii: none
+        stack_used_bytes:
+          type: integer
+          required: true
+          pii: none
+        usage_percent:
+          type: integer
+          required: true
+          pii: none
+        priority:
+          type: integer
+          required: true
+          pii: none
+        state:
+          type: enum
+          values: [running, ready, pending, suspended, dead]
+          required: true
+          pii: none

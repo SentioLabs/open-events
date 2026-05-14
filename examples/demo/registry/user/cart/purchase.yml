@@ -17,7 +17,8 @@ properties:
     required: true
     pii: none
   - name: payment_method
-    type: string
+    type: enum
+    values: [card, apple_pay, google_pay]
     required: true
     pii: none
   - name: coupon_code

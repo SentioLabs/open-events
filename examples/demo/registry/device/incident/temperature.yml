@@ -13,6 +13,7 @@ properties:
     required: true
     pii: none
   - name: breach_type
-    type: string
+    type: enum
+    values: [over, under]
     required: true
     pii: none

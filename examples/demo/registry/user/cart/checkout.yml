@@ -17,6 +17,7 @@ properties:
     required: true
     pii: none
   - name: currency
-    type: string
+    type: enum
+    values: [USD, EUR, GBP]
     required: true
     pii: none

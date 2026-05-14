@@ -114,10 +114,35 @@ type DomainBuilder struct {
 }
 
 type fieldEntry struct {
-	Name     string                     `yaml:"name"`
-	Type     registry.FieldType         `yaml:"type"`
-	Required bool                       `yaml:"required"`
-	PII      registry.PIIClassification `yaml:"pii"`
+	Name       string                     `yaml:"name"`
+	Type       registry.FieldType         `yaml:"type"`
+	Required   bool                       `yaml:"required"`
+	PII        registry.PIIClassification `yaml:"pii"`
+	Values     []string                   `yaml:"values,omitempty"`
+	Items      *subFieldEntry             `yaml:"items,omitempty"`
+	Properties map[string]subFieldEntry   `yaml:"properties,omitempty"`
+}
+
+// subFieldEntry is a nested field shape (used for items and properties).
+// It mirrors fieldEntry but without a top-level name (name is the map key for
+// properties, and items don't have a name).
+type subFieldEntry struct {
+	Type       registry.FieldType         `yaml:"type"`
+	Required   bool                       `yaml:"required,omitempty"`
+	PII        registry.PIIClassification `yaml:"pii"`
+	Values     []string                   `yaml:"values,omitempty"`
+	Properties map[string]subFieldEntry   `yaml:"properties,omitempty"`
+}
+
+// SubField constructs a subFieldEntry for use with PropertyObject and PropertyArrayOfObject.
+func SubField(name string, fieldType registry.FieldType, required bool, pii registry.PIIClassification) namedSubField {
+	return namedSubField{name: name, entry: subFieldEntry{Type: fieldType, Required: required, PII: pii}}
+}
+
+// namedSubField is a name + subFieldEntry pair used as input to object/array builders.
+type namedSubField struct {
+	name  string
+	entry subFieldEntry
 }
 
 // Description sets the domain description.
@@ -135,6 +160,12 @@ func (db *DomainBuilder) Owner(team string) *DomainBuilder {
 // Context adds a context field to the domain.
 func (db *DomainBuilder) Context(name string, fieldType registry.FieldType, required bool, pii registry.PIIClassification) *DomainBuilder {
 	db.context = append(db.context, fieldEntry{Name: name, Type: fieldType, Required: required, PII: pii})
+	return db
+}
+
+// ContextEnum adds an enum context field to the domain.
+func (db *DomainBuilder) ContextEnum(name string, required bool, pii registry.PIIClassification, values ...string) *DomainBuilder {
+	db.context = append(db.context, fieldEntry{Name: name, Type: registry.FieldTypeEnum, Required: required, PII: pii, Values: values})
 	return db
 }
 
@@ -209,6 +240,34 @@ func (ab *ActionBuilder) Description(s string) *ActionBuilder {
 // Property adds a property field to the action.
 func (ab *ActionBuilder) Property(name string, fieldType registry.FieldType, required bool, pii registry.PIIClassification) *ActionBuilder {
 	ab.properties = append(ab.properties, fieldEntry{Name: name, Type: fieldType, Required: required, PII: pii})
+	return ab
+}
+
+// PropertyEnum adds an enum property field to the action.
+func (ab *ActionBuilder) PropertyEnum(name string, required bool, pii registry.PIIClassification, values ...string) *ActionBuilder {
+	ab.properties = append(ab.properties, fieldEntry{Name: name, Type: registry.FieldTypeEnum, Required: required, PII: pii, Values: values})
+	return ab
+}
+
+// PropertyObject adds an object property field with named sub-fields to the action.
+func (ab *ActionBuilder) PropertyObject(name string, required bool, pii registry.PIIClassification, subFields ...namedSubField) *ActionBuilder {
+	props := make(map[string]subFieldEntry, len(subFields))
+	for _, sf := range subFields {
+		props[sf.name] = sf.entry
+	}
+	ab.properties = append(ab.properties, fieldEntry{Name: name, Type: registry.FieldTypeObject, Required: required, PII: pii, Properties: props})
+	return ab
+}
+
+// PropertyArrayOfObject adds an array-of-object property field to the action.
+// The array items are an anonymous object with the given sub-fields.
+func (ab *ActionBuilder) PropertyArrayOfObject(name string, required bool, pii registry.PIIClassification, subFields ...namedSubField) *ActionBuilder {
+	props := make(map[string]subFieldEntry, len(subFields))
+	for _, sf := range subFields {
+		props[sf.name] = sf.entry
+	}
+	items := &subFieldEntry{Type: registry.FieldTypeObject, PII: pii, Properties: props}
+	ab.properties = append(ab.properties, fieldEntry{Name: name, Type: registry.FieldTypeArray, Required: required, PII: pii, Items: items})
 	return ab
 }
 

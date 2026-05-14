@@ -241,6 +241,106 @@ func TestLoad_DomainContextPopulated(t *testing.T) {
 	}
 }
 
+// TestLoad_EnumObjectArrayFields exercises enum, object, and array-of-object field shapes
+// end-to-end: build → load → verify Field.Values, Field.Properties, Field.Items.
+func TestLoad_EnumObjectArrayFields(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("eng", "eng@example.com").
+		Language("go").
+		Domain("device").
+		Owner("eng").
+		Context("device_id", registry.FieldTypeString, true, registry.PIIPseudonymous).
+		ContextEnum("platform", true, registry.PIINone, "ios", "android", "web").
+		Action([]string{"diagnostics"}, "stack_usage").
+		Version(1).Status("active").Description("stack usage snapshot").
+		Property("thread_count", registry.FieldTypeInteger, true, registry.PIINone).
+		PropertyEnum("breach_type", true, registry.PIINone, "over", "under").
+		PropertyObject("eeprom_format_version", true, registry.PIINone,
+			testfx.SubField("major", registry.FieldTypeInteger, true, registry.PIINone),
+			testfx.SubField("minor", registry.FieldTypeInteger, true, registry.PIINone),
+		).
+		PropertyArrayOfObject("threads", true, registry.PIINone,
+			testfx.SubField("name", registry.FieldTypeString, true, registry.PIINone),
+			testfx.SubField("stack_size_bytes", registry.FieldTypeInteger, true, registry.PIINone),
+		).
+		Done().
+		Done().
+		Write(t)
+
+	reg, diags := registry.Load(root)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
+	}
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(reg.Events))
+	}
+
+	// Verify domain context enum field.
+	domain := reg.Domains["device"]
+	platformField, ok := domain.Context["platform"]
+	if !ok {
+		t.Fatal("expected platform context field")
+	}
+	if platformField.Type != registry.FieldTypeEnum {
+		t.Errorf("expected platform type=enum, got %q", platformField.Type)
+	}
+	if len(platformField.Values) != 3 {
+		t.Errorf("expected 3 enum values, got %d: %v", len(platformField.Values), platformField.Values)
+	}
+
+	props := reg.Events[0].Properties
+
+	// Verify enum property.
+	breachField, ok := props["breach_type"]
+	if !ok {
+		t.Fatal("expected breach_type property")
+	}
+	if breachField.Type != registry.FieldTypeEnum {
+		t.Errorf("expected breach_type type=enum, got %q", breachField.Type)
+	}
+	if len(breachField.Values) != 2 || breachField.Values[0] != "over" || breachField.Values[1] != "under" {
+		t.Errorf("expected breach_type values=[over, under], got %v", breachField.Values)
+	}
+
+	// Verify object property.
+	eepromField, ok := props["eeprom_format_version"]
+	if !ok {
+		t.Fatal("expected eeprom_format_version property")
+	}
+	if eepromField.Type != registry.FieldTypeObject {
+		t.Errorf("expected eeprom_format_version type=object, got %q", eepromField.Type)
+	}
+	if len(eepromField.Properties) != 2 {
+		t.Errorf("expected 2 object properties, got %d", len(eepromField.Properties))
+	}
+	if _, ok := eepromField.Properties["major"]; !ok {
+		t.Errorf("expected major sub-property")
+	}
+	if _, ok := eepromField.Properties["minor"]; !ok {
+		t.Errorf("expected minor sub-property")
+	}
+
+	// Verify array-of-object property.
+	threadsField, ok := props["threads"]
+	if !ok {
+		t.Fatal("expected threads property")
+	}
+	if threadsField.Type != registry.FieldTypeArray {
+		t.Errorf("expected threads type=array, got %q", threadsField.Type)
+	}
+	if threadsField.Items == nil {
+		t.Fatal("expected threads.items to be set")
+	}
+	if threadsField.Items.Type != registry.FieldTypeObject {
+		t.Errorf("expected threads.items type=object, got %q", threadsField.Items.Type)
+	}
+	if len(threadsField.Items.Properties) != 2 {
+		t.Errorf("expected 2 thread sub-properties, got %d", len(threadsField.Items.Properties))
+	}
+}
+
 // TestLoad_ActionPropertiesPopulated verifies action properties are loaded into event Properties.
 func TestLoad_ActionPropertiesPopulated(t *testing.T) {
 	root := testfx.New().
