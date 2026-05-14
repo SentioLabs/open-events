@@ -63,24 +63,45 @@ func UpdateLock(existing Lock, reg registry.Registry) (Lock, error) {
 				contextMax = locked.ProtoNumber
 			}
 		}
-
-		lockedCtx := make(map[string]LockedField, len(existingDomain.Context))
-		// Carry forward all existing context entries (including removed fields
-		// whose numbers must not be reused).
-		for name, locked := range existingDomain.Context {
-			lockedCtx[name] = locked
-		}
-		// Add any new context fields.
-		for _, name := range sortedFieldNames(domain.Context) {
-			if _, ok := lockedCtx[name]; ok {
-				continue
+		for _, reserved := range existingDomain.Reserved {
+			if reserved.ProtoNumber > contextMax {
+				contextMax = reserved.ProtoNumber
 			}
-			number := nextSequentialNumber(contextMax)
-			contextMax = number
-			lockedCtx[name] = LockedField{StableID: name, ProtoNumber: number}
 		}
 
-		updated.Domains[domainName] = LockedDomain{Context: lockedCtx}
+		// Build the active context: only fields still in the registry.
+		lockedCtx := make(map[string]LockedField, len(domain.Context))
+		for _, name := range sortedFieldNames(domain.Context) {
+			if locked, ok := existingDomain.Context[name]; ok {
+				// Preserve existing assignment.
+				lockedCtx[name] = locked
+			} else {
+				// Allocate a new proto number for new context fields.
+				number := nextSequentialNumber(contextMax)
+				contextMax = number
+				lockedCtx[name] = LockedField{StableID: name, ProtoNumber: number}
+			}
+		}
+
+		// Move removed context fields into Reserved (tombstones).
+		domainReserved := append([]ReservedField(nil), existingDomain.Reserved...)
+		for _, name := range sortedLockedFieldNames(existingDomain.Context) {
+			if _, ok := domain.Context[name]; ok {
+				continue // still active
+			}
+			locked := existingDomain.Context[name]
+			domainReserved = append(domainReserved, ReservedField{
+				Name:        name,
+				StableID:    locked.StableID,
+				ProtoNumber: locked.ProtoNumber,
+				Reason:      reservedFieldReasonRemoved,
+			})
+		}
+		sort.Slice(domainReserved, func(i, j int) bool {
+			return lessReservedField(domainReserved[i], domainReserved[j])
+		})
+
+		updated.Domains[domainName] = LockedDomain{Context: lockedCtx, Reserved: domainReserved}
 	}
 
 	// Update or add events from the registry. Events already in updated.Events
@@ -205,6 +226,10 @@ func CheckLock(lock Lock, reg registry.Registry) error {
 			if err := compareLockedField("domains."+domainName+".context."+name, actual, exp); err != nil {
 				return err
 			}
+		}
+		// Check domain reserved fields match.
+		if err := compareReservedFields("domains."+domainName, actualDomain.Reserved, expDomain.Reserved); err != nil {
+			return err
 		}
 	}
 
@@ -480,6 +505,11 @@ func validateLockNumbers(lock Lock) error {
 				return err
 			}
 		}
+		for _, reserved := range sortedReservedFields(domain.Reserved) {
+			if err := validateProtoNumber("domains."+domainName+".reserved."+reserved.Name, reserved.ProtoNumber); err != nil {
+				return err
+			}
+		}
 	}
 
 	for _, key := range sortedLockedEventKeys(lock.Events) {
@@ -517,9 +547,12 @@ func validateProtoNumber(path string, number int) error {
 func validateLockNumberHistory(lock Lock) error {
 	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
 		domain := lock.Domains[domainName]
-		numbers := make([]int, 0, len(domain.Context))
+		numbers := make([]int, 0, len(domain.Context)+len(domain.Reserved))
 		for _, name := range sortedLockedFieldNames(domain.Context) {
 			numbers = append(numbers, domain.Context[name].ProtoNumber)
+		}
+		for _, reserved := range sortedReservedFields(domain.Reserved) {
+			numbers = append(numbers, reserved.ProtoNumber)
 		}
 		if err := checkDenseNumberHistory("domains."+domainName+".context", numbers); err != nil {
 			return err
@@ -579,7 +612,7 @@ func isProtobufReservedNumber(number int) bool {
 func validateLockDuplicates(lock Lock) error {
 	for _, domainName := range sortedLockedDomainKeys(lock.Domains) {
 		domain := lock.Domains[domainName]
-		if err := checkDuplicateNumbers("domains."+domainName+".context", domain.Context, nil); err != nil {
+		if err := checkDuplicateNumbers("domains."+domainName+".context", domain.Context, domain.Reserved); err != nil {
 			return err
 		}
 	}

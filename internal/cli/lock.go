@@ -163,7 +163,8 @@ type lockFile struct {
 }
 
 type lockDomainFields struct {
-	Context map[string]lockField `yaml:"context"`
+	Context  map[string]lockField `yaml:"context"`
+	Reserved []lockReservedField  `yaml:"reserved,omitempty"`
 }
 
 type lockEventFields struct {
@@ -195,7 +196,21 @@ func newLockFile(lock schemair.Lock) lockFile {
 		for fieldName, locked := range domain.Context {
 			ctx[fieldName] = lockField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
 		}
-		file.Domains[domainName] = lockDomainFields{Context: ctx}
+		domainEntry := lockDomainFields{Context: ctx}
+		if len(domain.Reserved) > 0 {
+			reserved := make([]lockReservedField, 0, len(domain.Reserved))
+			for _, rv := range domain.Reserved {
+				reserved = append(reserved, lockReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})
+			}
+			sort.Slice(reserved, func(i, j int) bool {
+				if reserved[i].ProtoNumber != reserved[j].ProtoNumber {
+					return reserved[i].ProtoNumber < reserved[j].ProtoNumber
+				}
+				return reserved[i].Name < reserved[j].Name
+			})
+			domainEntry.Reserved = reserved
+		}
+		file.Domains[domainName] = domainEntry
 	}
 	for k, v := range lock.Events {
 		item := lockEventFields{
@@ -234,7 +249,11 @@ func (f lockFile) toSchemaLock() schemair.Lock {
 		for fieldName, locked := range domain.Context {
 			ctx[fieldName] = schemair.LockedField{StableID: locked.StableID, ProtoNumber: locked.ProtoNumber}
 		}
-		lock.Domains[domainName] = schemair.LockedDomain{Context: ctx}
+		reserved := make([]schemair.ReservedField, 0, len(domain.Reserved))
+		for _, rv := range domain.Reserved {
+			reserved = append(reserved, schemair.ReservedField{Name: rv.Name, StableID: rv.StableID, ProtoNumber: rv.ProtoNumber, Reason: rv.Reason})
+		}
+		lock.Domains[domainName] = schemair.LockedDomain{Context: ctx, Reserved: reserved}
 	}
 	for k, v := range f.Events {
 		event := schemair.LockedEvent{

@@ -7,7 +7,8 @@ type Lock struct {
 }
 
 type LockedDomain struct {
-	Context map[string]LockedField
+	Context  map[string]LockedField
+	Reserved []ReservedField
 }
 
 type LockedEvent struct {

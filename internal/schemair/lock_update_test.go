@@ -451,9 +451,13 @@ func TestUpdateLockPreservesRemovedDomainContextNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateLock() after removal error = %v", err)
 	}
-	if updated.Domains["user"].Context["tenant_id"].ProtoNumber != removedNumber {
-		t.Fatalf("removed tenant_id ProtoNumber = %d, want preserved %d",
-			updated.Domains["user"].Context["tenant_id"].ProtoNumber, removedNumber)
+	// After removal, tenant_id must NOT be in active Context — it goes to Reserved.
+	if _, ok := updated.Domains["user"].Context["tenant_id"]; ok {
+		t.Fatalf("removed tenant_id still in active Context; should be in Reserved")
+	}
+	domain := updated.Domains["user"]
+	if len(domain.Reserved) != 1 || domain.Reserved[0].Name != "tenant_id" || domain.Reserved[0].ProtoNumber != removedNumber {
+		t.Fatalf("domain.Reserved = %#v, want tenant_id with ProtoNumber %d", domain.Reserved, removedNumber)
 	}
 
 	reg.Domains["user"] = registry.Domain{
@@ -1422,6 +1426,108 @@ func TestCheckLockDoesNotMutateLock(t *testing.T) {
 	}
 }
 
+// TestContextFieldTombstone verifies the full lifecycle: build registry v1 with
+// field X, lock update, remove X from registry, lock update again — then the
+// lock domain should have X in Reserved, not in Context, so that FromRegistry
+// can succeed (generate) without complaining about a stale context entry.
+func TestContextFieldTombstone_UpdateLockMovesRemovedContextToReserved(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"tenant_id":  {Name: "tenant_id"},
+		"session_id": {Name: "session_id"},
+	})
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v1 error = %v", err)
+	}
+	removedNumber := lock.Domains["user"].Context["session_id"].ProtoNumber
+
+	// Remove session_id from registry.
+	reg.Domains["user"] = registry.Domain{
+		Name: "user",
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id"},
+		},
+	}
+
+	lock2, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v2 error = %v", err)
+	}
+
+	domain := lock2.Domains["user"]
+	// session_id must NOT be in the active Context.
+	if _, ok := domain.Context["session_id"]; ok {
+		t.Fatalf("session_id remained in active Context after removal; should be in Reserved")
+	}
+	// session_id must appear in Reserved.
+	if len(domain.Reserved) != 1 || domain.Reserved[0].Name != "session_id" {
+		t.Fatalf("domain.Reserved = %#v, want one entry for session_id", domain.Reserved)
+	}
+	if domain.Reserved[0].ProtoNumber != removedNumber {
+		t.Fatalf("Reserved[0].ProtoNumber = %d, want %d", domain.Reserved[0].ProtoNumber, removedNumber)
+	}
+}
+
+func TestContextFieldTombstone_CheckLockAcceptsSubsetContext(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"tenant_id":  {Name: "tenant_id"},
+		"session_id": {Name: "session_id"},
+	})
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v1 error = %v", err)
+	}
+
+	// Remove session_id.
+	reg.Domains["user"] = registry.Domain{
+		Name:    "user",
+		Context: map[string]registry.Field{"tenant_id": {Name: "tenant_id"}},
+	}
+	lock2, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v2 error = %v", err)
+	}
+
+	// CheckLock on the updated lock against the reduced registry must succeed.
+	if err := CheckLock(lock2, reg); err != nil {
+		t.Fatalf("CheckLock() error = %v, want nil", err)
+	}
+}
+
+func TestContextFieldTombstone_NewFieldDoesNotReuseRemovedNumber(t *testing.T) {
+	reg := domainCtx("user", map[string]registry.Field{
+		"tenant_id":  {Name: "tenant_id"},
+		"session_id": {Name: "session_id"},
+	})
+
+	lock, err := UpdateLock(Lock{}, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v1 error = %v", err)
+	}
+	removedNumber := lock.Domains["user"].Context["session_id"].ProtoNumber
+
+	// Remove session_id, add country.
+	reg.Domains["user"] = registry.Domain{
+		Name: "user",
+		Context: map[string]registry.Field{
+			"tenant_id": {Name: "tenant_id"},
+			"country":   {Name: "country"},
+		},
+	}
+	lock2, err := UpdateLock(lock, reg)
+	if err != nil {
+		t.Fatalf("UpdateLock() v2 error = %v", err)
+	}
+
+	// country must get a new number, not reuse removedNumber.
+	countryNum := lock2.Domains["user"].Context["country"].ProtoNumber
+	if countryNum == removedNumber {
+		t.Fatalf("country reused removed session_id ProtoNumber %d; numbers must not be reused", removedNumber)
+	}
+}
+
 func lockWithReservedPropertyForTest(t *testing.T) (Lock, registry.Registry, string) {
 	t.Helper()
 
@@ -1490,7 +1596,10 @@ func cloneLockedDomainsForTest(domains map[string]LockedDomain) map[string]Locke
 	}
 	clone := make(map[string]LockedDomain, len(domains))
 	for name, domain := range domains {
-		clone[name] = LockedDomain{Context: cloneLockedFieldsForTest(domain.Context)}
+		clone[name] = LockedDomain{
+			Context:  cloneLockedFieldsForTest(domain.Context),
+			Reserved: cloneReservedFieldsForTest(domain.Reserved),
+		}
 	}
 	return clone
 }
