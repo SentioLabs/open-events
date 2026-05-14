@@ -1,178 +1,274 @@
-package registry
+package registry_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sentiolabs/open-events/internal/registry"
+	"github.com/sentiolabs/open-events/internal/registry/testfx"
 )
 
-func TestLoadSingleFile(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "valid-single.yaml")
+// TestLoad_SingleDomainHappyPath exercises a single domain with one action.
+func TestLoad_SingleDomainHappyPath(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("user signup").Done().
+		Done().
+		Write(t)
 
-	loaded, diags := Load(registryPath)
+	reg, diags := registry.Load(root)
 	if diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = %v", registryPath, diags)
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
 	}
-
-	if got, want := len(loaded.Context), 3; got != want {
-		t.Fatalf("len(loaded.Context) = %d, want %d", got, want)
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(reg.Events))
 	}
-	if got, want := len(loaded.Events), 2; got != want {
-		t.Fatalf("len(loaded.Events) = %d, want %d", got, want)
+	if reg.Events[0].Name != "user.auth.signup" {
+		t.Errorf("expected user.auth.signup, got %q", reg.Events[0].Name)
+	}
+	if reg.Events[0].Domain != "user" {
+		t.Errorf("expected Domain=user, got %q", reg.Events[0].Domain)
+	}
+	if got := strings.Join(reg.Events[0].Path, "/"); got != "user/auth" {
+		t.Errorf("expected Path=user/auth, got %q", got)
+	}
+	if len(reg.Domains) != 1 {
+		t.Fatalf("expected 1 domain, got %d", len(reg.Domains))
+	}
+	if _, ok := reg.Domains["user"]; !ok {
+		t.Errorf("expected Domains[\"user\"] to be populated")
 	}
 }
 
-func TestLoadDirectorySortsAndMerges(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "valid-dir")
+// TestLoad_TwoDomainHappyPath exercises two domains, verifying alphabetical event ordering.
+func TestLoad_TwoDomainHappyPath(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Owner("device-platform", "device@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("signup").Done().
+		Done().
+		Domain("device").
+		Owner("device-platform").
+		Context("device_id", registry.FieldTypeString, true, registry.PIIPseudonymous).
+		Action([]string{"info"}, "hardware").Version(1).Status("active").Description("hw").Done().
+		Done().
+		Write(t)
 
-	loaded, diags := Load(registryPath)
+	reg, diags := registry.Load(root)
 	if diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = %v", registryPath, diags)
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
 	}
-
-	if got, want := len(loaded.Context), 3; got != want {
-		t.Fatalf("len(loaded.Context) = %d, want %d", got, want)
+	if len(reg.Events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(reg.Events))
 	}
-	if got, want := len(loaded.Events), 2; got != want {
-		t.Fatalf("len(loaded.Events) = %d, want %d", got, want)
+	// Events sorted alphabetically: device.info.hardware < user.auth.signup
+	if reg.Events[0].Name != "device.info.hardware" {
+		t.Errorf("expected device.info.hardware first, got %q", reg.Events[0].Name)
 	}
-	if got, want := loaded.Events[0].Name, "search.query_submitted"; got != want {
-		t.Fatalf("loaded.Events[0].Name = %q, want %q", got, want)
+	if reg.Events[0].Domain != "device" {
+		t.Errorf("expected Domain=device, got %q", reg.Events[0].Domain)
 	}
-	if got, want := loaded.Events[1].Name, "user.signed_up"; got != want {
-		t.Fatalf("loaded.Events[1].Name = %q, want %q", got, want)
+	if got := strings.Join(reg.Events[0].Path, "/"); got != "device/info" {
+		t.Errorf("expected Path=device/info, got %q", got)
 	}
-}
-
-func TestLoadRejectsUnknownFields(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "unknown-field.yaml")
-
-	_, diags := Load(registryPath)
-	if !diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = none, want errors", registryPath)
-	}
-	if got, want := diags.Error(), "field unknown_field not found"; !strings.Contains(got, want) {
-		t.Fatalf("diags = %q, want substring %q", got, want)
+	if len(reg.Domains) != 2 {
+		t.Fatalf("expected 2 domains, got %d", len(reg.Domains))
 	}
 }
 
-func TestLoadRejectsDuplicateContextAcrossFiles(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "duplicate-context")
+// TestLoad_Depth4Subcategory exercises a deeply nested category path.
+func TestLoad_Depth4Subcategory(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("infra", "infra@example.com").
+		Language("go").
+		Domain("device").
+		Owner("infra").
+		Context("device_id", registry.FieldTypeString, true, registry.PIIPseudonymous).
+		Action([]string{"info", "diagnostics"}, "stack_usage").Version(1).Status("active").Description("stack usage").Done().
+		Done().
+		Write(t)
 
-	_, diags := Load(registryPath)
-	if !diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = none, want errors", registryPath)
-	}
-	if got, want := diags.Error(), "duplicate context field"; !strings.Contains(got, want) {
-		t.Fatalf("diags = %q, want substring %q", got, want)
-	}
-}
-
-func TestLoadRejectsDuplicateEventVersionAcrossFiles(t *testing.T) {
-	registryPath := filepath.Join("testdata", "load", "duplicate-event")
-
-	_, diags := Load(registryPath)
-	if !diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = none, want errors", registryPath)
-	}
-	if got, want := diags.Error(), "duplicate event version"; !strings.Contains(got, want) {
-		t.Fatalf("diags = %q, want substring %q", got, want)
-	}
-}
-
-func TestLoadRejectsAdditionalYAMLDocuments(t *testing.T) {
-	tempDir := t.TempDir()
-	registryPath := filepath.Join(tempDir, "registry.yaml")
-	if err := os.WriteFile(registryPath, []byte("openevents: 0.1.0\nnamespace: com.example.product\n---\nnamespace: com.example.other\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q): %v", registryPath, err)
-	}
-
-	_, diags := Load(registryPath)
-	if !diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = none, want errors", registryPath)
-	}
-	if got, want := diags.Error(), "additional YAML documents are not supported"; !strings.Contains(got, want) {
-		t.Fatalf("diags = %q, want substring %q", got, want)
-	}
-}
-
-func TestLoadDirectoryIgnoresOpenEventsLockFile(t *testing.T) {
-	registryPath := filepath.Join("..", "..", "examples", "basic", "openevents.yaml")
-	data, err := os.ReadFile(registryPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%q): %v", registryPath, err)
-	}
-
-	tempDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tempDir, "openevents.yaml"), data, 0o644); err != nil {
-		t.Fatalf("WriteFile(openevents.yaml): %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(tempDir, "openevents.lock.yaml"), []byte("version: 1\ncontext: {}\nevents: {}\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(openevents.lock.yaml): %v", err)
-	}
-
-	withLock, diags := Load(tempDir)
+	reg, diags := registry.Load(root)
 	if diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = %v", tempDir, diags)
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
 	}
-	if got, want := len(withLock.Events), 2; got != want {
-		t.Fatalf("len(withLock.Events) = %d, want %d", got, want)
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(reg.Events))
 	}
-}
-
-func TestLoadDirectoryLoadsNestedOpenEventsLockFile(t *testing.T) {
-	tempDir := t.TempDir()
-
-	root := "openevents: 0.1.0\nnamespace: com.example.product\n"
-	if err := os.WriteFile(filepath.Join(tempDir, "openevents.yaml"), []byte(root), 0o644); err != nil {
-		t.Fatalf("WriteFile(openevents.yaml): %v", err)
+	if reg.Events[0].Name != "device.info.diagnostics.stack_usage" {
+		t.Errorf("expected device.info.diagnostics.stack_usage, got %q", reg.Events[0].Name)
 	}
-
-	eventsDir := filepath.Join(tempDir, "events")
-	if err := os.MkdirAll(eventsDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll(%q): %v", eventsDir, err)
+	if reg.Events[0].Domain != "device" {
+		t.Errorf("expected Domain=device, got %q", reg.Events[0].Domain)
 	}
-
-	nested := "events:\n  nested.lock_event:\n    version: 1\n    status: active\n    owner: eng\n    producer: app\n    destination:\n      queue: analytics\n"
-	if err := os.WriteFile(filepath.Join(eventsDir, "openevents.lock.yaml"), []byte(nested), 0o644); err != nil {
-		t.Fatalf("WriteFile(events/openevents.lock.yaml): %v", err)
-	}
-
-	loaded, diags := Load(tempDir)
-	if diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = %v", tempDir, diags)
-	}
-
-	if got, want := len(loaded.Events), 1; got != want {
-		t.Fatalf("len(loaded.Events) = %d, want %d", got, want)
-	}
-	if got, want := loaded.Events[0].Name, "nested.lock_event"; got != want {
-		t.Fatalf("loaded.Events[0].Name = %q, want %q", got, want)
+	if got := strings.Join(reg.Events[0].Path, "/"); got != "device/info/diagnostics" {
+		t.Errorf("expected Path=device/info/diagnostics, got %q", got)
 	}
 }
 
-func TestLoadConflictingSingletonDiagnosticLocation(t *testing.T) {
-	tempDir := t.TempDir()
-	aPath := filepath.Join(tempDir, "a.yaml")
-	bPath := filepath.Join(tempDir, "b.yaml")
-
-	if err := os.WriteFile(aPath, []byte("openevents: 0.1.0\nnamespace: old\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q): %v", aPath, err)
-	}
-	if err := os.WriteFile(bPath, []byte("openevents: 0.1.0\nnamespace: new\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile(%q): %v", bPath, err)
-	}
-
-	_, diags := Load(tempDir)
+// TestLoad_MissingOpenEventsYAML checks that a directory without openevents.yaml returns an error.
+func TestLoad_MissingOpenEventsYAML(t *testing.T) {
+	root := t.TempDir()
+	_, diags := registry.Load(root)
 	if !diags.HasErrors() {
-		t.Fatalf("Load(%q) diagnostics = none, want errors", tempDir)
+		t.Fatal("expected error diagnostic for missing openevents.yaml, got none")
+	}
+	if !strings.Contains(diags.Error(), "openevents.yaml") {
+		t.Errorf("expected error mentioning openevents.yaml, got: %v", diags.Error())
+	}
+}
+
+// TestLoad_MissingDomainYML checks that a top-level directory missing domain.yml returns an error.
+func TestLoad_MissingDomainYML(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("user signup").Done().
+		Done().
+		Write(t)
+
+	// Remove domain.yml to trigger the missing domain.yml error
+	if err := os.Remove(filepath.Join(root, "user", "domain.yml")); err != nil {
+		t.Fatalf("failed to remove domain.yml: %v", err)
 	}
 
-	if got, want := diags[0].Location, bPath+": namespace"; got != want {
-		t.Fatalf("diags[0].Location = %q, want %q", got, want)
+	_, diags := registry.Load(root)
+	if !diags.HasErrors() {
+		t.Fatal("expected error diagnostic for missing domain.yml, got none")
 	}
-	if got, want := diags[0].Message, "conflicting value \"new\"; already set to \"old\""; got != want {
-		t.Fatalf("diags[0].Message = %q, want %q", got, want)
+	if !strings.Contains(diags.Error(), "domain.yml") {
+		t.Errorf("expected error mentioning domain.yml, got: %v", diags.Error())
+	}
+}
+
+// TestLoad_SingleFileRejection checks that passing a file path returns a clear error.
+func TestLoad_SingleFileRejection(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("signup").Done().
+		Done().
+		Write(t)
+
+	// Pass the openevents.yaml file directly instead of the directory
+	_, diags := registry.Load(filepath.Join(root, "openevents.yaml"))
+	if !diags.HasErrors() {
+		t.Fatal("expected error diagnostic for single-file invocation, got none")
+	}
+	if !strings.Contains(diags.Error(), "expected directory containing openevents.yaml") {
+		t.Errorf("expected 'expected directory containing openevents.yaml', got: %v", diags.Error())
+	}
+}
+
+// TestLoad_MalformedActionYAML checks that a malformed action file returns an error.
+func TestLoad_MalformedActionYAML(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("signup").Done().
+		Done().
+		Write(t)
+
+	// Overwrite the action file with invalid YAML
+	badYAML := []byte("version: [invalid\n")
+	if err := os.WriteFile(filepath.Join(root, "user", "auth", "signup.yml"), badYAML, 0o644); err != nil {
+		t.Fatalf("failed to write malformed YAML: %v", err)
+	}
+
+	_, diags := registry.Load(root)
+	if !diags.HasErrors() {
+		t.Fatal("expected error diagnostic for malformed action YAML, got none")
+	}
+}
+
+// TestLoad_DomainContextPopulated verifies domain context fields are loaded into Registry.Domains.
+func TestLoad_DomainContextPopulated(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Context("tenant_id", registry.FieldTypeString, true, registry.PIINone).
+		Context("session_id", registry.FieldTypeUUID, false, registry.PIIPseudonymous).
+		Action([]string{"auth"}, "signup").Version(1).Status("active").Description("signup").Done().
+		Done().
+		Write(t)
+
+	reg, diags := registry.Load(root)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
+	}
+	domain, ok := reg.Domains["user"]
+	if !ok {
+		t.Fatal("expected Domains[\"user\"] to be populated")
+	}
+	if len(domain.Context) != 2 {
+		t.Fatalf("expected 2 context fields in domain, got %d", len(domain.Context))
+	}
+	if _, ok := domain.Context["tenant_id"]; !ok {
+		t.Errorf("expected tenant_id in domain context")
+	}
+}
+
+// TestLoad_ActionPropertiesPopulated verifies action properties are loaded into event Properties.
+func TestLoad_ActionPropertiesPopulated(t *testing.T) {
+	root := testfx.New().
+		Namespace("com.acme.platform").
+		Package("github.com/acme/platform/events", "acme_platform.events").
+		Owner("growth", "growth@example.com").
+		Language("go").
+		Domain("user").
+		Owner("growth").
+		Action([]string{"auth"}, "signup").
+		Version(1).Status("active").Description("signup").
+		Property("method", registry.FieldTypeString, true, registry.PIINone).
+		Property("referral_code", registry.FieldTypeString, false, registry.PIINone).
+		Done().
+		Done().
+		Write(t)
+
+	reg, diags := registry.Load(root)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", diags.Error())
+	}
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(reg.Events))
+	}
+	if len(reg.Events[0].Properties) != 2 {
+		t.Fatalf("expected 2 properties, got %d: %v", len(reg.Events[0].Properties), reg.Events[0].Properties)
+	}
+	if _, ok := reg.Events[0].Properties["method"]; !ok {
+		t.Errorf("expected method property")
 	}
 }

@@ -1,28 +1,17 @@
 package registry
 
-type registryYAML struct {
-	OpenEvents string               `yaml:"openevents"`
-	Namespace  string               `yaml:"namespace"`
-	Package    packageYAML          `yaml:"package"`
-	Defaults   defaultsYAML         `yaml:"defaults"`
-	Owners     []ownerYAML          `yaml:"owners"`
-	Context    map[string]fieldYAML `yaml:"context"`
-	Events     map[string]eventYAML `yaml:"events"`
+// rootYAML maps the openevents.yaml file at the registry root.
+type rootYAML struct {
+	Openevents string      `yaml:"openevents"`
+	Namespace  string      `yaml:"namespace"`
+	Package    packageYAML `yaml:"package"`
+	Owners     []ownerYAML `yaml:"owners"`
+	Codegen    codegenYAML `yaml:"codegen"`
 }
 
 type packageYAML struct {
 	Go     string `yaml:"go"`
 	Python string `yaml:"python"`
-}
-
-type defaultsYAML struct {
-	Queue     string        `yaml:"queue"`
-	Snowflake snowflakeYAML `yaml:"snowflake"`
-}
-
-type snowflakeYAML struct {
-	Database string `yaml:"database"`
-	Schema   string `yaml:"schema"`
 }
 
 type ownerYAML struct {
@@ -31,31 +20,37 @@ type ownerYAML struct {
 	Email string `yaml:"email"`
 }
 
-type destinationYAML struct {
-	Queue          string `yaml:"queue"`
-	SnowflakeTable string `yaml:"snowflake_table"`
+type codegenYAML struct {
+	Languages []string               `yaml:"languages"`
+	Configs   map[string]interface{} `yaml:"configs"`
 }
 
-type eventYAML struct {
-	Version     int                  `yaml:"version"`
-	Status      string               `yaml:"status"`
-	Description string               `yaml:"description"`
-	Owner       string               `yaml:"owner"`
-	Producer    string               `yaml:"producer"`
-	Sources     []string             `yaml:"sources"`
-	Destination destinationYAML      `yaml:"destination"`
-	Properties  map[string]fieldYAML `yaml:"properties"`
+// domainYAML maps a <domain>/domain.yml file.
+type domainYAML struct {
+	Description string            `yaml:"description"`
+	Owner       string            `yaml:"owner"`
+	Context     domainContextYAML `yaml:"context"`
 }
 
-type fieldYAML struct {
-	Type        FieldType            `yaml:"type"`
-	Required    *bool                `yaml:"required"`
-	Description string               `yaml:"description"`
-	PII         PIIClassification    `yaml:"pii"`
-	Deprecated  *bool                `yaml:"deprecated"`
-	Default     any                  `yaml:"default"`
-	Examples    []any                `yaml:"examples"`
-	Values      []string             `yaml:"values"`
-	Items       *fieldYAML           `yaml:"items"`
-	Properties  map[string]fieldYAML `yaml:"properties"`
+type domainContextYAML struct {
+	Fields []fieldEntryYAML `yaml:"fields"`
+}
+
+// actionYAML maps a per-action <action>.yml file.
+type actionYAML struct {
+	Version     int              `yaml:"version"`
+	Status      string           `yaml:"status"`
+	Description string           `yaml:"description"`
+	Owner       string           `yaml:"owner"`
+	Producer    string           `yaml:"producer"`
+	Sources     []string         `yaml:"sources"`
+	Properties  []fieldEntryYAML `yaml:"properties"`
+}
+
+// fieldEntryYAML is a single field entry in a list-form context or properties block.
+type fieldEntryYAML struct {
+	Name     string            `yaml:"name"`
+	Type     FieldType         `yaml:"type"`
+	Required bool              `yaml:"required"`
+	PII      PIIClassification `yaml:"pii"`
 }
