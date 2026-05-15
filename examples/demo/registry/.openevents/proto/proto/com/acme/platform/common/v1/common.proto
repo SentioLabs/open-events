@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package com.acme.platform.common.v1;
-option go_package = "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common;common";
+option go_package = "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1;commonv1";
 
 message Client {
   optional string name = 1;

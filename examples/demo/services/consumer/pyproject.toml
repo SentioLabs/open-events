@@ -20,7 +20,7 @@ target-version = "py311"
 extend-select = ["E", "F", "I", "B", "UP"]
 
 [tool.uv.sources]
-openevents-demo-pb2 = { path = "../../registry/.openevents/proto/gen/python", editable = true }
+openevents-demo-pb2 = { path = "../../gen/python", editable = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/consumer"]

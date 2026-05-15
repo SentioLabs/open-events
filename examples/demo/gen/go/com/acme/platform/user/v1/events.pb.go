@@ -4,10 +4,10 @@
 // 	protoc        (unknown)
 // source: com/acme/platform/user/v1/events.proto
 
-package user
+package userv1
 
 import (
-	common "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
+	v1 "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -358,7 +358,7 @@ type UserAuthLoginV1 struct {
 	EventVersion  int64                      `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                     `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp     `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client             `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                 `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext               `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserAuthLoginV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -423,7 +423,7 @@ func (x *UserAuthLoginV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserAuthLoginV1) GetClient() *common.Client {
+func (x *UserAuthLoginV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -503,7 +503,7 @@ type UserAuthLogoutV1 struct {
 	EventVersion  int64                       `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                      `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp      `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client              `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                  `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext                `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserAuthLogoutV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -568,7 +568,7 @@ func (x *UserAuthLogoutV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserAuthLogoutV1) GetClient() *common.Client {
+func (x *UserAuthLogoutV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -640,7 +640,7 @@ type UserAuthSignupV1 struct {
 	EventVersion  int64                       `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                      `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp      `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client              `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                  `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext                `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserAuthSignupV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -705,7 +705,7 @@ func (x *UserAuthSignupV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserAuthSignupV1) GetClient() *common.Client {
+func (x *UserAuthSignupV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -785,7 +785,7 @@ type UserCartCheckoutV1 struct {
 	EventVersion  int64                         `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                        `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp        `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                    `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext                  `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserCartCheckoutV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -850,7 +850,7 @@ func (x *UserCartCheckoutV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserCartCheckoutV1) GetClient() *common.Client {
+func (x *UserCartCheckoutV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -946,7 +946,7 @@ type UserCartItemAddedV1 struct {
 	EventVersion  int64                          `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                         `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp         `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                 `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                     `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext                   `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserCartItemAddedV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1011,7 +1011,7 @@ func (x *UserCartItemAddedV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserCartItemAddedV1) GetClient() *common.Client {
+func (x *UserCartItemAddedV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -1099,7 +1099,7 @@ type UserCartPurchaseV1 struct {
 	EventVersion  int64                         `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                        `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp        `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                    `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *UserContext                  `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *UserCartPurchaseV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1164,7 +1164,7 @@ func (x *UserCartPurchaseV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *UserCartPurchaseV1) GetClient() *common.Client {
+func (x *UserCartPurchaseV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -1415,7 +1415,7 @@ const file_com_acme_platform_user_v1_events_proto_rawDesc = "" +
 	"\f_coupon_codeB\v\n" +
 	"\t_order_idB\x11\n" +
 	"\x0f_payment_methodB\x0e\n" +
-	"\f_total_centsBTZRgithub.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user;userb\x06proto3"
+	"\f_total_centsBYZWgithub.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/user/v1;userv1b\x06proto3"
 
 var (
 	file_com_acme_platform_user_v1_events_proto_rawDescOnce sync.Once
@@ -1451,7 +1451,7 @@ var file_com_acme_platform_user_v1_events_proto_goTypes = []any{
 	(*UserCartPurchaseV1)(nil),                      // 16: com.acme.platform.user.v1.UserCartPurchaseV1
 	(*UserCartPurchaseV1Properties)(nil),            // 17: com.acme.platform.user.v1.UserCartPurchaseV1Properties
 	(*timestamppb.Timestamp)(nil),                   // 18: google.protobuf.Timestamp
-	(*common.Client)(nil),                           // 19: com.acme.platform.common.v1.Client
+	(*v1.Client)(nil),                               // 19: com.acme.platform.common.v1.Client
 }
 var file_com_acme_platform_user_v1_events_proto_depIdxs = []int32{
 	0,  // 0: com.acme.platform.user.v1.UserContext.platform:type_name -> com.acme.platform.user.v1.UserContext.Platform

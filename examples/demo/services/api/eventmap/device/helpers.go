@@ -3,8 +3,8 @@ package device
 import (
 	"google.golang.org/protobuf/proto"
 
+	devicepb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
-	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
 )
 
 // validateContext validates the device request context.

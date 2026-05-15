@@ -5,9 +5,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	commonpb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1"
+	devicepb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
-	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
-	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
 )
 
 // ToProto builds a DeviceInfoSoftwareV1 protobuf with a fresh envelope.

@@ -10,8 +10,9 @@ type rootYAML struct {
 }
 
 type packageYAML struct {
-	Go     string `yaml:"go"`
-	Python string `yaml:"python"`
+	Go            string `yaml:"go"`
+	Python        string `yaml:"python"`
+	ProtoGoModule string `yaml:"proto_go_module,omitempty"`
 }
 
 type ownerYAML struct {

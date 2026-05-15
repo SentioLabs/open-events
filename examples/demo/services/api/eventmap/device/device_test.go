@@ -6,9 +6,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	devicepb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/device"
-	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
 )
 
 func validDeviceContext() device.DeviceContext {

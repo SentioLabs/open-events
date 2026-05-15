@@ -107,11 +107,12 @@ func FromRegistry(reg registry.Registry, lock Lock) (Registry, error) {
 	}
 
 	return Registry{
-		Namespace:   reg.Namespace,
-		GoPackage:   reg.Package.Go,
-		Files:       files,
-		DomainSpecs: domainSpecs,
-		CommonSpec:  CommonSpec{Client: clientMessage()},
+		Namespace:     reg.Namespace,
+		GoPackage:     reg.Package.Go,
+		ProtoGoModule: reg.Package.ProtoGoModule,
+		Files:         files,
+		DomainSpecs:   domainSpecs,
+		CommonSpec:    CommonSpec{Client: clientMessage()},
 	}, nil
 }
 

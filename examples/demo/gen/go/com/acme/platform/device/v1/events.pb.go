@@ -4,10 +4,10 @@
 // 	protoc        (unknown)
 // source: com/acme/platform/device/v1/events.proto
 
-package device
+package devicev1
 
 import (
-	common "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
+	v1 "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -312,7 +312,7 @@ type DeviceDiagnosticsStackUsageV1 struct {
 	EventVersion  int64                                    `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                                   `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp                   `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                           `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                               `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                           `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceDiagnosticsStackUsageV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -377,7 +377,7 @@ func (x *DeviceDiagnosticsStackUsageV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceDiagnosticsStackUsageV1) GetClient() *common.Client {
+func (x *DeviceDiagnosticsStackUsageV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -473,7 +473,7 @@ type DeviceIncidentDropV1 struct {
 	EventVersion  int64                           `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                          `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp          `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                  `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                      `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                  `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceIncidentDropV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -538,7 +538,7 @@ func (x *DeviceIncidentDropV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceIncidentDropV1) GetClient() *common.Client {
+func (x *DeviceIncidentDropV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -626,7 +626,7 @@ type DeviceIncidentTemperatureV1 struct {
 	EventVersion  int64                                  `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                                 `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp                 `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                         `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                             `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                         `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceIncidentTemperatureV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -691,7 +691,7 @@ func (x *DeviceIncidentTemperatureV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceIncidentTemperatureV1) GetClient() *common.Client {
+func (x *DeviceIncidentTemperatureV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -779,7 +779,7 @@ type DeviceInfoCalibrationV1 struct {
 	EventVersion  int64                              `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                             `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp             `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                     `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                         `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                     `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceInfoCalibrationV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -844,7 +844,7 @@ func (x *DeviceInfoCalibrationV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceInfoCalibrationV1) GetClient() *common.Client {
+func (x *DeviceInfoCalibrationV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -932,7 +932,7 @@ type DeviceInfoHardwareV1 struct {
 	EventVersion  int64                           `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                          `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp          `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                  `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                      `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                  `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceInfoHardwareV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -997,7 +997,7 @@ func (x *DeviceInfoHardwareV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceInfoHardwareV1) GetClient() *common.Client {
+func (x *DeviceInfoHardwareV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -1117,7 +1117,7 @@ type DeviceInfoSoftwareV1 struct {
 	EventVersion  int64                           `protobuf:"varint,2,opt,name=event_version,json=eventVersion,proto3" json:"event_version,omitempty"`
 	EventId       string                          `protobuf:"bytes,3,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
 	EventTs       *timestamppb.Timestamp          `protobuf:"bytes,4,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
-	Client        *common.Client                  `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
+	Client        *v1.Client                      `protobuf:"bytes,5,opt,name=client,proto3" json:"client,omitempty"`
 	Context       *DeviceContext                  `protobuf:"bytes,6,opt,name=context,proto3" json:"context,omitempty"`
 	Properties    *DeviceInfoSoftwareV1Properties `protobuf:"bytes,7,opt,name=properties,proto3" json:"properties,omitempty"`
 	unknownFields protoimpl.UnknownFields
@@ -1182,7 +1182,7 @@ func (x *DeviceInfoSoftwareV1) GetEventTs() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DeviceInfoSoftwareV1) GetClient() *common.Client {
+func (x *DeviceInfoSoftwareV1) GetClient() *v1.Client {
 	if x != nil {
 		return x.Client
 	}
@@ -1832,7 +1832,7 @@ const file_com_acme_platform_device_v1_events_proto_rawDesc = "" +
 	"\r_product_typeB\x10\n" +
 	"\x0e_serial_numberB\f\n" +
 	"\n" +
-	"_unique_idBXZVgithub.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device;deviceb\x06proto3"
+	"_unique_idB]Z[github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1;devicev1b\x06proto3"
 
 var (
 	file_com_acme_platform_device_v1_events_proto_rawDescOnce sync.Once
@@ -1871,7 +1871,7 @@ var file_com_acme_platform_device_v1_events_proto_goTypes = []any{
 	(*DeviceInfoHardwareV1Properties_ModulePcbVersion)(nil),    // 19: com.acme.platform.device.v1.DeviceInfoHardwareV1Properties.ModulePcbVersion
 	(*DeviceInfoSoftwareV1Properties_Versions)(nil),            // 20: com.acme.platform.device.v1.DeviceInfoSoftwareV1Properties.Versions
 	(*timestamppb.Timestamp)(nil),                              // 21: google.protobuf.Timestamp
-	(*common.Client)(nil),                                      // 22: com.acme.platform.common.v1.Client
+	(*v1.Client)(nil),                                          // 22: com.acme.platform.common.v1.Client
 }
 var file_com_acme_platform_device_v1_events_proto_depIdxs = []int32{
 	21, // 0: com.acme.platform.device.v1.DeviceDiagnosticsStackUsageV1.event_ts:type_name -> google.protobuf.Timestamp

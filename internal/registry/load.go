@@ -35,8 +35,9 @@ func Load(path string) (Registry, Diagnostics) {
 		Version:   root.Openevents,
 		Namespace: root.Namespace,
 		Package: PackageConfig{
-			Go:     root.Package.Go,
-			Python: root.Package.Python,
+			Go:            root.Package.Go,
+			Python:        root.Package.Python,
+			ProtoGoModule: root.Package.ProtoGoModule,
 		},
 		Owners:  normalizeOwners(root.Owners),
 		Context: map[string]Field{},

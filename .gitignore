@@ -4,6 +4,12 @@ _build/
 build/
 gen/
 
+# Demo's gen/ is the buf-generated proto Go module + Python bindings. We
+# commit these so `git clone && cd examples/demo && go build ./...` works
+# without the buf+protoc toolchain. `.gitattributes` marks them as
+# linguist-generated so GitHub collapses them from PR diffs.
+!examples/demo/gen/
+
 # Local-only working artifacts (not checked in)
 /docs/plans/
 /SLOP_REVIEW.md

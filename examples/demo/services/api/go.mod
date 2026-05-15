@@ -2,12 +2,20 @@ module github.com/sentiolabs/open-events/examples/demo/services/api
 
 go 1.25.0
 
+// The buf-generated proto Go bindings live as their own module under the
+// demo's gen/ tree. While the demo lives in-tree alongside the compiler,
+// services point at it via a local replace directive; when the demo
+// extracts to its own repo (acme-events), this becomes a normal versioned
+// require.
+replace github.com/sentiolabs/open-events/examples/demo/gen/go => ../../gen/go
+
 require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.42.27
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.15.2
+	github.com/sentiolabs/open-events/examples/demo/gen/go v0.0.0-00010101000000-000000000000
 	google.golang.org/protobuf v1.36.11
 )
 

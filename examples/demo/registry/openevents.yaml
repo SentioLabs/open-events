@@ -4,6 +4,9 @@ namespace: com.acme.platform
 package:
   go: github.com/sentiolabs/open-events/examples/demo/services/api/eventmap
   python: consumer
+  # ProtoGoModule is where buf writes generated *.pb.go files. Services import
+  # from <ProtoGoModule>/<namespacePath>/<domain>/v1 directly — no copy step.
+  proto_go_module: github.com/sentiolabs/open-events/examples/demo/gen/go
 
 owners:
   - { team: growth, email: growth-data@example.com, slack: "#team-growth" }

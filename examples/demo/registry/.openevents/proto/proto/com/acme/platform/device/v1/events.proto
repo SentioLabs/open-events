@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package com.acme.platform.device.v1;
-option go_package = "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device;device";
+option go_package = "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1;devicev1";
 
 import "google/protobuf/timestamp.proto";
 import "com/acme/platform/common/v1/common.proto";

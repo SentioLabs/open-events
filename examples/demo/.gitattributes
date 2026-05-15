@@ -2,8 +2,8 @@
 # in PR diffs by default. The files are still in the repo (so `git clone &&
 # go build` works without the buf+protoc toolchain), but they don't drown
 # real changes in PR review.
-services/api/eventmap/pb/**/*.pb.go linguist-generated=true
-registry/.openevents/proto/gen/python/**/*.py linguist-generated=true
+gen/go/**/*.pb.go      linguist-generated=true
+gen/python/**/*_pb2.py linguist-generated=true
 
 # openevents-generated Go bindings. These are emitted by the per-domain Go
 # emitter (internal/codegen/golang) and re-run with `make gen` whenever the

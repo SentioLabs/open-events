@@ -4,7 +4,7 @@
 // 	protoc        (unknown)
 // source: com/acme/platform/common/v1/common.proto
 
-package common
+package commonv1
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -83,7 +83,7 @@ const file_com_acme_platform_common_v1_common_proto_rawDesc = "" +
 	"\aversion\x18\x02 \x01(\tH\x01R\aversion\x88\x01\x01B\a\n" +
 	"\x05_nameB\n" +
 	"\n" +
-	"\b_versionBXZVgithub.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common;commonb\x06proto3"
+	"\b_versionB]Z[github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1;commonv1b\x06proto3"
 
 var (
 	file_com_acme_platform_common_v1_common_proto_rawDescOnce sync.Once

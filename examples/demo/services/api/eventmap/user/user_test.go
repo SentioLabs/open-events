@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
+	userpb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/user/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
-	userpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/user"
 )
 

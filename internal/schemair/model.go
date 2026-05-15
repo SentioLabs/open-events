@@ -1,11 +1,17 @@
 package schemair
 
 type Registry struct {
-	Namespace   string
-	GoPackage   string // Go import-path base from registry Package.Go
-	Files       []File
-	DomainSpecs []DomainSpec
-	CommonSpec  CommonSpec
+	Namespace string
+	GoPackage string // Go import-path base from registry Package.Go.
+	// ProtoGoModule is the Go module path where buf-generated *.pb.go files
+	// live (registry Package.ProtoGoModule). When non-empty, protogen emits
+	// `option go_package = "<ProtoGoModule>/<namespacePath>/<domain>/v1"`
+	// matching what buf produces with paths=source_relative. When empty,
+	// protogen falls back to the legacy "<GoPackage>/pb/<domain>" convention.
+	ProtoGoModule string
+	Files         []File
+	DomainSpecs   []DomainSpec
+	CommonSpec    CommonSpec
 }
 
 // DomainSpec carries the per-domain context fields and events for proto emission.

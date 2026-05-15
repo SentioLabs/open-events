@@ -1,0 +1,12 @@
+# buf generation configuration for the demo. Writes Go and Python bindings
+# directly into gen/<lang>/ at the demo root — no postgen copy step. With
+# paths=source_relative, files land at gen/go/com/acme/platform/<domain>/v1/
+# matching the go_package option openevents emits when proto_go_module is
+# set in the registry's package block.
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: gen/go
+    opt: paths=source_relative
+  - protoc_builtin: python
+    out: gen/python

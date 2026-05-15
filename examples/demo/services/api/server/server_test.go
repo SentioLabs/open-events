@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
-	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
-	userpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user"
+	devicepb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/device/v1"
+	userpb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/user/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/user"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/publisher"
 )

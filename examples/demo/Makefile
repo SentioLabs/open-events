@@ -2,9 +2,11 @@
 SHELL := /bin/bash
 
 REPO_ROOT       := $(abspath ../..)
+DEMO_ROOT       := $(abspath .)
 REGISTRY        := ./examples/demo/registry
-PROTO_ROOT      := $(REPO_ROOT)/examples/demo/registry/.openevents/proto
-API_EVENTMAP    := $(REPO_ROOT)/examples/demo/services/api/eventmap
+PROTO_ROOT      := $(DEMO_ROOT)/registry/.openevents/proto
+GEN_GO          := $(DEMO_ROOT)/gen/go
+GEN_PYTHON      := $(DEMO_ROOT)/gen/python
 PARQUET_OUT     := $(REPO_ROOT)/_build/demo-output
 QUEUE_NAME      := storefront-events
 QUEUE_URL       := http://localhost:4566/000000000000/$(QUEUE_NAME)
@@ -23,10 +25,15 @@ gen:
 	cd $(REPO_ROOT) && go run ./cmd/openevents validate $(REGISTRY)
 	cd $(REPO_ROOT) && go run ./cmd/openevents lock check $(REGISTRY)
 	rm -rf $(PROTO_ROOT)
+	rm -rf $(GEN_GO) $(GEN_PYTHON)
 	cd $(REPO_ROOT) && go run ./cmd/openevents generate $(REGISTRY)
 	cd $(REPO_ROOT) && bash scripts/install-buf.sh
-	cd $(PROTO_ROOT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate .
-	bash scripts/postgen.sh $(PROTO_ROOT)/gen $(API_EVENTMAP)
+	# Re-init gen/go/go.mod after `rm -rf $(GEN_GO)` blew it away. The proto
+	# Go module lives at examples/demo/gen/go and is referenced via go.mod
+	# replace directives from services/api.
+	mkdir -p $(GEN_GO) && cp $(DEMO_ROOT)/gen-go.mod.template $(GEN_GO)/go.mod
+	cd $(DEMO_ROOT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate
+	bash $(DEMO_ROOT)/scripts/postgen.sh $(GEN_PYTHON)
 
 up:
 	docker compose up -d localstack
@@ -65,3 +72,4 @@ down:
 
 clean:
 	rm -rf $(PARQUET_OUT) $(REPO_ROOT)/_build/localstack
+	rm -rf $(GEN_GO) $(GEN_PYTHON)

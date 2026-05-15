@@ -5,9 +5,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	commonpb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/common/v1"
+	userpb "github.com/sentiolabs/open-events/examples/demo/gen/go/com/acme/platform/user/v1"
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
-	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
-	userpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/user"
 )
 
 var checkoutCurrencyByName = map[string]userpb.UserCartCheckoutV1Properties_Currency{

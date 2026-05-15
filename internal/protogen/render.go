@@ -63,7 +63,7 @@ func Render(reg schemair.Registry, outDir string) error {
 		// Emit per-domain events.proto.
 		for _, ds := range reg.DomainSpecs {
 			domainProtoPath := filepath.Join(protoRoot, filepath.FromSlash(nsPath), ds.Name, "v1", "events.proto")
-			domainBytes, err := RenderDomainProto(reg.Namespace, reg.GoPackage, ds)
+			domainBytes, err := RenderDomainProto(reg, ds)
 			if err != nil {
 				return fmt.Errorf("render %s/v1/events.proto: %w", ds.Name, err)
 			}
@@ -125,12 +125,11 @@ func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
 	b.WriteString("syntax = \"proto3\";\n\n")
 	fmt.Fprintf(&b, "package %s;\n", pkg)
 
-	// Emit go_package option when a Go import path is configured.
-	// Proto types live under a "pb" subdirectory to avoid collisions with
-	// the JSON-binding types generated in the parent eventmap package.
-	if reg.GoPackage != "" {
-		goImport := reg.GoPackage + "/pb/common"
-		alias := "common"
+	// Emit go_package option. Prefer the new gen/ layout (ProtoGoModule set)
+	// where buf writes files at <ProtoGoModule>/<namespacePath>/common/v1/.
+	// Fall back to the legacy convention "<GoPackage>/pb/common" for monorepo
+	// layouts that colocate proto with the consumer.
+	if goImport, alias := commonGoPackage(reg); goImport != "" {
 		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(goImport+";"+alias))
 	}
 	b.WriteString("\n")
@@ -142,10 +141,41 @@ func RenderCommonProto(reg schemair.Registry) ([]byte, error) {
 	return []byte(b.String()), nil
 }
 
-// RenderDomainProto renders the events.proto for a single domain.
-// goPackage is the Go import-path base (e.g. "github.com/acme/foo/eventmap");
-// pass "" to omit the go_package option.
-func RenderDomainProto(namespace string, goPackage string, ds schemair.DomainSpec) ([]byte, error) {
+// commonGoPackage returns the (import path, alias) for the common proto's
+// Go package option. The result depends on which packaging convention the
+// registry has opted into:
+//   - ProtoGoModule set: "<ProtoGoModule>/<namespacePath>/common/v1", alias "commonv1"
+//   - GoPackage set:     "<GoPackage>/pb/common", alias "common"  (legacy)
+//   - neither set:       returns "", "" (caller skips the go_package option)
+func commonGoPackage(reg schemair.Registry) (importPath, alias string) {
+	if reg.ProtoGoModule != "" {
+		nsPath := namespaceToPath(reg.Namespace)
+		return reg.ProtoGoModule + "/" + nsPath + "/common/v1", "commonv1"
+	}
+	if reg.GoPackage != "" {
+		return reg.GoPackage + "/pb/common", "common"
+	}
+	return "", ""
+}
+
+// domainGoPackage returns the (import path, alias) for a domain proto's Go
+// package option. Same convention selection as commonGoPackage.
+func domainGoPackage(reg schemair.Registry, domainName string) (importPath, alias string) {
+	if reg.ProtoGoModule != "" {
+		nsPath := namespaceToPath(reg.Namespace)
+		return reg.ProtoGoModule + "/" + nsPath + "/" + domainName + "/v1", domainName + "v1"
+	}
+	if reg.GoPackage != "" {
+		return reg.GoPackage + "/pb/" + domainName, domainName
+	}
+	return "", ""
+}
+
+// RenderDomainProto renders the events.proto for a single domain. The
+// go_package option is selected from reg by domainGoPackage — see
+// commonGoPackage for the convention rules.
+func RenderDomainProto(reg schemair.Registry, ds schemair.DomainSpec) ([]byte, error) {
+	namespace := reg.Namespace
 	nsPath := namespaceToPath(namespace)
 	pkg := namespace + "." + ds.Name + ".v1"
 	commonImport := nsPath + "/common/v1/common.proto"
@@ -160,12 +190,8 @@ func RenderDomainProto(namespace string, goPackage string, ds schemair.DomainSpe
 	b.WriteString("syntax = \"proto3\";\n\n")
 	fmt.Fprintf(&b, "package %s;\n", pkg)
 
-	// Emit go_package option when a Go import path is configured.
-	// Proto types live under a "pb" subdirectory to avoid collisions with
-	// the JSON-binding types generated in the parent eventmap package.
-	if goPackage != "" {
-		goImport := goPackage + "/pb/" + ds.Name
-		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(goImport+";"+ds.Name))
+	if goImport, alias := domainGoPackage(reg, ds.Name); goImport != "" {
+		fmt.Fprintf(&b, "option go_package = %s;\n", strconv.Quote(goImport+";"+alias))
 	}
 	b.WriteString("\n")
 	if usesTimestamp {

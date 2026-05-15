@@ -14,8 +14,24 @@ type Registry struct {
 }
 
 type PackageConfig struct {
-	Go     string
+	// Go is the import path of the per-domain Go bindings package emitted by
+	// internal/codegen/golang (e.g. "github.com/acme/foo/eventmap"). Services
+	// import this for event_names.go, context.go, and *_request.go.
+	Go string
+
+	// Python is the package name of the per-domain Python bindings emitted by
+	// internal/codegen/python (e.g. "consumer"). Modules live under
+	// `<Python>/event_names/` and `<Python>/context/`.
 	Python string
+
+	// ProtoGoModule is the Go module path under which buf-generated *.pb.go
+	// files live (e.g. "github.com/acme/foo/gen/go"). Optional. If set,
+	// protogen emits `option go_package = "<ProtoGoModule>/<namespacePath>/<domain>/v1"`
+	// matching what buf produces with `paths=source_relative`. If empty,
+	// protogen falls back to the legacy `<Go>/pb/<domain>` convention for
+	// backward compatibility with monorepo layouts that colocate proto with
+	// the consumer.
+	ProtoGoModule string
 }
 
 type Owner struct {

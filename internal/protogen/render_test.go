@@ -103,7 +103,7 @@ func TestRenderDomainProtoContentsAreCorrect(t *testing.T) {
 	}
 	ds := reg.DomainSpecs[0] // "user" domain
 
-	got, err := RenderDomainProto(reg.Namespace, "", ds)
+	got, err := RenderDomainProto(reg, ds)
 	if err != nil {
 		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
 	}
@@ -141,7 +141,7 @@ func TestRenderDomainProtoContextEnumIsEmitted(t *testing.T) {
 	}
 	ds := reg.DomainSpecs[0]
 
-	got, err := RenderDomainProto(reg.Namespace, "", ds)
+	got, err := RenderDomainProto(reg, ds)
 	if err != nil {
 		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
 	}
@@ -175,11 +175,11 @@ func TestRenderPerDomainIsDeterministic(t *testing.T) {
 	}
 
 	ds := reg.DomainSpecs[0]
-	firstDomain, err := RenderDomainProto(reg.Namespace, "", ds)
+	firstDomain, err := RenderDomainProto(reg, ds)
 	if err != nil {
 		t.Fatalf("RenderDomainProto() first error = %v", err)
 	}
-	secondDomain, err := RenderDomainProto(reg.Namespace, "", ds)
+	secondDomain, err := RenderDomainProto(reg, ds)
 	if err != nil {
 		t.Fatalf("RenderDomainProto() second error = %v", err)
 	}
@@ -672,7 +672,7 @@ func TestRenderDomainProtoArrayOfObjectEmitsNestedMessage(t *testing.T) {
 		},
 	}
 
-	got, err := RenderDomainProto("com.acme.platform", "", ds)
+	got, err := RenderDomainProto(schemair.Registry{Namespace: "com.acme.platform"}, ds)
 	if err != nil {
 		t.Fatalf("RenderDomainProto() error = %v, want nil", err)
 	}

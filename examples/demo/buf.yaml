@@ -1,0 +1,6 @@
+# buf module configuration for the demo. The proto sources are produced by
+# `openevents generate` into registry/.openevents/proto/proto/; buf reads them
+# from here when invoked from the demo root via `make gen`.
+version: v2
+modules:
+  - path: registry/.openevents/proto/proto
