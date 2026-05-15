@@ -13,8 +13,8 @@ import (
 
 func validDeviceContext() device.DeviceContext {
 	return device.DeviceContext{
-		TenantId: "tenant-1",
-		DeviceId: "device-1",
+		TenantID: "tenant-1",
+		DeviceID: "device-1",
 	}
 }
 
@@ -32,10 +32,10 @@ func stringp(v string) *string    { return &v }
 
 func TestInfoHardware_Validate_RejectsMissingDeviceID(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:         device.DeviceContext{TenantId: "t"},
-		UniqueID:        stringp("uid"),
-		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
-		SensorType:      "co",
+		Context:                device.DeviceContext{TenantID: "t"},
+		UniqueID:               stringp("uid"),
+		ManufacturingTimestamp: stringp("2024-01-01T00:00:00Z"),
+		SensorType:             stringp("co"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "context.device_id") {
@@ -45,10 +45,10 @@ func TestInfoHardware_Validate_RejectsMissingDeviceID(t *testing.T) {
 
 func TestInfoHardware_Validate_RejectsBadSensorType(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:         validDeviceContext(),
-		UniqueID:        stringp("uid"),
-		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
-		SensorType:      "invalid",
+		Context:                validDeviceContext(),
+		UniqueID:               stringp("uid"),
+		ManufacturingTimestamp: stringp("2024-01-01T00:00:00Z"),
+		SensorType:             stringp("invalid"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "sensor_type") {
@@ -61,9 +61,9 @@ func TestInfoHardware_Validate_RejectsBadSensorType(t *testing.T) {
 // would silently accept `{}` POSTs.
 func TestInfoHardware_Validate_RejectsMissingUniqueID(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:         validDeviceContext(),
-		ManufacturingTs: stringp("2024-01-01T00:00:00Z"),
-		SensorType:      "co",
+		Context:                validDeviceContext(),
+		ManufacturingTimestamp: stringp("2024-01-01T00:00:00Z"),
+		SensorType:             stringp("co"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "unique_id") {
@@ -78,7 +78,7 @@ func TestInfoHardware_Validate_RejectsMissingManufacturingTs(t *testing.T) {
 	req := device.InfoHardwareRequest{
 		Context:    validDeviceContext(),
 		UniqueID:   stringp("abc123"),
-		SensorType: "co",
+		SensorType: stringp("co"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "manufacturing_timestamp") {
@@ -91,10 +91,10 @@ func TestInfoHardware_Validate_RejectsMissingManufacturingTs(t *testing.T) {
 // silently, so a bad timestamp would publish an envelope with no proto field.
 func TestInfoHardware_Validate_RejectsUnparseableManufacturingTs(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:         validDeviceContext(),
-		UniqueID:        stringp("abc123"),
-		ManufacturingTs: stringp("not-a-timestamp"),
-		SensorType:      "co",
+		Context:                validDeviceContext(),
+		UniqueID:               stringp("abc123"),
+		ManufacturingTimestamp: stringp("not-a-timestamp"),
+		SensorType:             stringp("co"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "manufacturing_timestamp") {
@@ -104,12 +104,12 @@ func TestInfoHardware_Validate_RejectsUnparseableManufacturingTs(t *testing.T) {
 
 func TestInfoHardware_ToProto_RoundTrip(t *testing.T) {
 	req := device.InfoHardwareRequest{
-		Context:             validDeviceContext(),
-		UniqueID:            stringp("abc123"),
-		ManufacturingTs:     stringp("2024-01-01T00:00:00Z"),
-		SensorType:          "oxygen",
-		EepromFormatVersion: device.EepromFormatVersionRequest{Major: 1, Minor: 0},
-		ModulePcbVersion:    device.ModulePcbVersionRequest{Major: 2, Minor: 1},
+		Context:                validDeviceContext(),
+		UniqueID:               stringp("abc123"),
+		ManufacturingTimestamp: stringp("2024-01-01T00:00:00Z"),
+		SensorType:             stringp("oxygen"),
+		EepromFormatVersion:    &device.EepromFormatVersionRequest{Major: int64p(1), Minor: int64p(0)},
+		ModulePcbVersion:       &device.ModulePcbVersionRequest{Major: int64p(2), Minor: int64p(1)},
 	}
 	env := req.ToProto()
 	wire, err := proto.Marshal(env)
@@ -141,7 +141,7 @@ func TestIncidentTemperature_Validate_RejectsBadBreachType(t *testing.T) {
 		Context:    validDeviceContext(),
 		DegreesC:   float64p(45.0),
 		ThresholdC: float64p(40.0),
-		BreachType: "extreme",
+		BreachType: stringp("extreme"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "breach_type") {
@@ -153,7 +153,7 @@ func TestIncidentTemperature_Validate_RejectsMissingDegreesC(t *testing.T) {
 	req := device.IncidentTemperatureRequest{
 		Context:    validDeviceContext(),
 		ThresholdC: float64p(40.0),
-		BreachType: "over",
+		BreachType: stringp("over"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "degrees_c") {
@@ -165,7 +165,7 @@ func TestIncidentTemperature_Validate_RejectsMissingThresholdC(t *testing.T) {
 	req := device.IncidentTemperatureRequest{
 		Context:    validDeviceContext(),
 		DegreesC:   float64p(45.0),
-		BreachType: "over",
+		BreachType: stringp("over"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "threshold_c") {
@@ -178,7 +178,7 @@ func TestIncidentTemperature_ToProto_RoundTrip(t *testing.T) {
 		Context:    validDeviceContext(),
 		DegreesC:   float64p(45.5),
 		ThresholdC: float64p(40.0),
-		BreachType: "over",
+		BreachType: stringp("over"),
 	}
 	env := req.ToProto()
 	wire, err := proto.Marshal(env)
@@ -203,7 +203,7 @@ func TestIncidentDrop_Validate_RejectsMissingPeakAccelerationG(t *testing.T) {
 	req := device.IncidentDropRequest{
 		Context:    validDeviceContext(),
 		DurationMs: int64p(100),
-		Axis:       "x",
+		Axis:       stringp("x"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "peak_acceleration_g") {
@@ -215,7 +215,7 @@ func TestIncidentDrop_Validate_RejectsMissingDurationMs(t *testing.T) {
 	req := device.IncidentDropRequest{
 		Context:           validDeviceContext(),
 		PeakAccelerationG: float64p(9.8),
-		Axis:              "x",
+		Axis:              stringp("x"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "duration_ms") {
@@ -229,7 +229,7 @@ func TestInfoCalibration_Validate_RejectsMissingConcentration(t *testing.T) {
 	req := device.InfoCalibrationRequest{
 		Context:   validDeviceContext(),
 		Integral:  int64p(42),
-		Timestamp: int64p(1700000000),
+		Timestamp: stringp("2024-01-01T00:00:00Z"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "concentration") {
@@ -253,10 +253,10 @@ func TestInfoCalibration_Validate_RejectsMissingTimestamp(t *testing.T) {
 
 func TestInfoSoftware_Validate_RejectsMissingUniqueID(t *testing.T) {
 	req := device.InfoSoftwareRequest{
-		Context:                validDeviceContext(),
-		SerialNumber:           "SN-123",
-		ProductType:            "z9",
-		PcbaHwManufacturedTsMs: int64p(1700000000000),
+		Context:                       validDeviceContext(),
+		SerialNumber:                  stringp("SN-123"),
+		ProductType:                   stringp("z9"),
+		PcbaHwManufacturedTimestampMs: int64p(1700000000000),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "unique_id") {
@@ -267,9 +267,9 @@ func TestInfoSoftware_Validate_RejectsMissingUniqueID(t *testing.T) {
 func TestInfoSoftware_Validate_RejectsMissingPcbaTimestamp(t *testing.T) {
 	req := device.InfoSoftwareRequest{
 		Context:      validDeviceContext(),
-		SerialNumber: "SN-123",
+		SerialNumber: stringp("SN-123"),
 		UniqueID:     int64p(42),
-		ProductType:  "z9",
+		ProductType:  stringp("z9"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "pcba_hw_manufactured_timestamp_ms") {
@@ -296,15 +296,15 @@ func TestDiagnosticsStackUsage_ToProto_ThreadMapping(t *testing.T) {
 		Context:             validDeviceContext(),
 		ThreadCount:         int64p(1),
 		HighestUsagePercent: int64p(75),
-		HighestUsageThread:  "main",
-		Threads: []device.ThreadRequest{
+		HighestUsageThread:  stringp("main"),
+		Threads: []*device.ThreadRequest{
 			{
-				Name:           "main",
+				Name:           stringp("main"),
 				StackSizeBytes: int64p(4096),
 				StackUsedBytes: int64p(3072),
 				UsagePercent:   int64p(75),
 				Priority:       int64p(5),
-				State:          "running",
+				State:          stringp("running"),
 			},
 		},
 	}

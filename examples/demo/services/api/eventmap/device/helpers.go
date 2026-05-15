@@ -10,10 +10,10 @@ import (
 // validateContext validates the device request context.
 func validateContext(c DeviceContext) []eventmap.FieldError {
 	var errs []eventmap.FieldError
-	if c.TenantId == "" {
+	if c.TenantID == "" {
 		errs = append(errs, eventmap.FieldError{Field: "context.tenant_id", Message: "required"})
 	}
-	if c.DeviceId == "" {
+	if c.DeviceID == "" {
 		errs = append(errs, eventmap.FieldError{Field: "context.device_id", Message: "required"})
 	}
 	return errs
@@ -22,8 +22,8 @@ func validateContext(c DeviceContext) []eventmap.FieldError {
 // contextToProto converts a JSON-binding DeviceContext to the proto DeviceContext.
 func contextToProto(c DeviceContext) *devicepb.DeviceContext {
 	out := &devicepb.DeviceContext{
-		TenantId: proto.String(c.TenantId),
-		DeviceId: proto.String(c.DeviceId),
+		TenantId: proto.String(c.TenantID),
+		DeviceId: proto.String(c.DeviceID),
 	}
 	if c.SerialNumber != "" {
 		out.SerialNumber = proto.String(c.SerialNumber)

@@ -3,26 +3,8 @@
 package device
 
 type DeviceContext struct {
-	DeviceId        string `json:"device_id"`
+	DeviceID        string `json:"device_id"`
 	FirmwareVersion string `json:"firmware_version,omitempty"`
 	SerialNumber    string `json:"serial_number,omitempty"`
-	TenantId        string `json:"tenant_id"`
-}
-
-// FieldError describes a validation error for a single context field.
-type FieldError struct {
-	Field   string
-	Message string
-}
-
-// Validate returns validation errors for required fields on DeviceContext.
-func (c DeviceContext) Validate() []FieldError {
-	var errs []FieldError
-	if c.DeviceId == "" {
-		errs = append(errs, FieldError{Field: "device_id", Message: "required"})
-	}
-	if c.TenantId == "" {
-		errs = append(errs, FieldError{Field: "tenant_id", Message: "required"})
-	}
-	return errs
+	TenantID        string `json:"tenant_id"`
 }

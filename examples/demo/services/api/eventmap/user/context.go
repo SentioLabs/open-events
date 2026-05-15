@@ -4,25 +4,7 @@ package user
 
 type UserContext struct {
 	Platform  string `json:"platform"`
-	SessionId string `json:"session_id,omitempty"`
-	TenantId  string `json:"tenant_id"`
-	UserId    string `json:"user_id,omitempty"`
-}
-
-// FieldError describes a validation error for a single context field.
-type FieldError struct {
-	Field   string
-	Message string
-}
-
-// Validate returns validation errors for required fields on UserContext.
-func (c UserContext) Validate() []FieldError {
-	var errs []FieldError
-	if c.Platform == "" {
-		errs = append(errs, FieldError{Field: "platform", Message: "required"})
-	}
-	if c.TenantId == "" {
-		errs = append(errs, FieldError{Field: "tenant_id", Message: "required"})
-	}
-	return errs
+	SessionID string `json:"session_id,omitempty"`
+	TenantID  string `json:"tenant_id"`
+	UserID    string `json:"user_id,omitempty"`
 }

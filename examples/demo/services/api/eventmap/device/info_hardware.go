@@ -3,41 +3,14 @@ package device
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/google/uuid"
 
 	"github.com/sentiolabs/open-events/examples/demo/services/api/eventmap"
 	commonpb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/common"
 	devicepb "github.com/sentiolabs/open-events/examples/demo/services/api/eventmap/pb/device"
 )
-
-// EepromFormatVersionRequest is the wire shape for the eeprom_format_version object.
-type EepromFormatVersionRequest struct {
-	Major int64 `json:"major"`
-	Minor int64 `json:"minor"`
-}
-
-// ModulePcbVersionRequest is the wire shape for the module_pcb_version object.
-type ModulePcbVersionRequest struct {
-	Major int64 `json:"major"`
-	Minor int64 `json:"minor"`
-}
-
-// InfoHardwareRequest is the JSON body for POST /v1/events/device/info/hardware.
-// Required primitive fields use pointer types so the validator can distinguish
-// "field omitted from JSON" from "field set to its zero value".
-type InfoHardwareRequest struct {
-	Context             DeviceContext              `json:"context"`
-	UniqueID            *string                    `json:"unique_id"`              // required
-	ManufacturingTs     *string                    `json:"manufacturing_timestamp"` // required; RFC3339
-	EepromFormatVersion EepromFormatVersionRequest `json:"eeprom_format_version"`
-	ModulePcbVersion    ModulePcbVersionRequest    `json:"module_pcb_version"`
-	SensorType          string                     `json:"sensor_type"` // "co"|"alcohol"|"oxygen"|"fuel_cell"
-	FuelCellLotNumber   string                     `json:"fuel_cell_lot_number,omitempty"`
-	FuelCellVendor      string                     `json:"fuel_cell_vendor,omitempty"`
-}
 
 var sensorTypeByName = map[string]devicepb.DeviceInfoHardwareV1Properties_SensorType{
 	"unspecified": devicepb.DeviceInfoHardwareV1Properties_SENSOR_TYPE_UNSPECIFIED,
@@ -47,40 +20,22 @@ var sensorTypeByName = map[string]devicepb.DeviceInfoHardwareV1Properties_Sensor
 	"fuel_cell":   devicepb.DeviceInfoHardwareV1Properties_SENSOR_TYPE_FUEL_CELL,
 }
 
-// Validate returns field-level errors for the request, empty on success.
-func (r InfoHardwareRequest) Validate() []eventmap.FieldError {
-	errs := validateContext(r.Context)
-	if r.UniqueID == nil {
-		errs = append(errs, eventmap.FieldError{Field: "unique_id", Message: "required"})
-	}
-	if r.ManufacturingTs == nil {
-		errs = append(errs, eventmap.FieldError{Field: "manufacturing_timestamp", Message: "required"})
-	} else if _, err := time.Parse(time.RFC3339, *r.ManufacturingTs); err != nil {
-		errs = append(errs, eventmap.FieldError{Field: "manufacturing_timestamp", Message: "must be RFC3339 timestamp"})
-	}
-	if _, ok := sensorTypeByName[r.SensorType]; !ok {
-		errs = append(errs, eventmap.FieldError{Field: "sensor_type", Message: "must be one of unspecified|co|alcohol|oxygen|fuel_cell"})
-	}
-	return errs
-}
-
-// ToProto builds a DeviceInfoHardwareV1 protobuf with a fresh envelope. Callers
-// must invoke Validate() first; ToProto assumes required fields are set.
+// ToProto builds a DeviceInfoHardwareV1 protobuf with a fresh envelope.
+// Callers must invoke Validate() first; ManufacturingTimestamp is parsed
+// as RFC3339 (Validate already proved it parses).
 func (r InfoHardwareRequest) ToProto() eventmap.EnvelopeMessage {
-	// time.Parse here is safe: Validate ensured the timestamp is non-nil
-	// and parseable; we discard the error deliberately.
-	t, _ := time.Parse(time.RFC3339, *r.ManufacturingTs)
+	t, _ := time.Parse(time.RFC3339, *r.ManufacturingTimestamp)
 	props := &devicepb.DeviceInfoHardwareV1Properties{
 		UniqueId:               proto.String(*r.UniqueID),
 		ManufacturingTimestamp: timestamppb.New(t),
-		SensorType:             sensorTypeByName[r.SensorType].Enum(),
+		SensorType:             sensorTypeByName[*r.SensorType].Enum(),
 		EepromFormatVersion: &devicepb.DeviceInfoHardwareV1Properties_EepromFormatVersion{
-			Major: proto.Int64(r.EepromFormatVersion.Major),
-			Minor: proto.Int64(r.EepromFormatVersion.Minor),
+			Major: proto.Int64(*r.EepromFormatVersion.Major),
+			Minor: proto.Int64(*r.EepromFormatVersion.Minor),
 		},
 		ModulePcbVersion: &devicepb.DeviceInfoHardwareV1Properties_ModulePcbVersion{
-			Major: proto.Int64(r.ModulePcbVersion.Major),
-			Minor: proto.Int64(r.ModulePcbVersion.Minor),
+			Major: proto.Int64(*r.ModulePcbVersion.Major),
+			Minor: proto.Int64(*r.ModulePcbVersion.Minor),
 		},
 	}
 	if r.FuelCellLotNumber != "" {

@@ -17,7 +17,7 @@ var platformByName = map[string]userpb.UserContext_Platform{
 // validateContext validates the request context and returns field-level errors.
 func validateContext(c UserContext) []eventmap.FieldError {
 	var errs []eventmap.FieldError
-	if c.TenantId == "" {
+	if c.TenantID == "" {
 		errs = append(errs, eventmap.FieldError{Field: "context.tenant_id", Message: "required"})
 	}
 	if _, ok := platformByName[c.Platform]; !ok {
@@ -30,13 +30,13 @@ func validateContext(c UserContext) []eventmap.FieldError {
 func contextToProto(c UserContext) *userpb.UserContext {
 	out := &userpb.UserContext{
 		Platform: platformByName[c.Platform].Enum(),
-		TenantId: proto.String(c.TenantId),
+		TenantId: proto.String(c.TenantID),
 	}
-	if c.UserId != "" {
-		out.UserId = proto.String(c.UserId)
+	if c.UserID != "" {
+		out.UserId = proto.String(c.UserID)
 	}
-	if c.SessionId != "" {
-		out.SessionId = proto.String(c.SessionId)
+	if c.SessionID != "" {
+		out.SessionId = proto.String(c.SessionID)
 	}
 	return out
 }

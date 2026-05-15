@@ -115,9 +115,10 @@ func TestEmit_ContextContent(t *testing.T) {
 	if !strings.Contains(userText, `json:"tenant_id"`) {
 		t.Errorf("user/context.go missing tenant_id JSON tag:\n%s", userText)
 	}
-	if !strings.Contains(userText, "Validate()") {
-		t.Errorf("user/context.go missing Validate() method:\n%s", userText)
-	}
+	// Note: the context.go file emits only the struct now. Per-event Validate
+	// methods live in the generated <action>_request.go files instead; the
+	// dead UserContext.Validate that previously lived here is removed because
+	// no caller invoked it (slop-review A-3 / C-4).
 
 	// device domain: DeviceContext with device_id field
 	deviceCtx, err := os.ReadFile(filepath.Join(outDir, "device", "context.go"))

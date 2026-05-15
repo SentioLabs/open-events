@@ -87,7 +87,7 @@ func TestPostUserAuthSignup_Publishes(t *testing.T) {
 		t.Errorf("EventId %q is not a valid uuid: %v", msg.GetEventId(), err)
 	}
 	if msg.GetContext().GetTenantId() != "tenant-1" {
-		t.Errorf("Context.TenantId: %q", msg.GetContext().GetTenantId())
+		t.Errorf("Context.TenantID: %q", msg.GetContext().GetTenantId())
 	}
 
 	var resp map[string]any

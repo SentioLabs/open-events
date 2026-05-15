@@ -19,9 +19,9 @@ func stringp(v string) *string { return &v }
 
 func validUserContext() user.UserContext {
 	return user.UserContext{
-		TenantId:  "tenant-1",
-		UserId:    "user-1",
-		SessionId: "session-1",
+		TenantID:  "tenant-1",
+		UserID:    "user-1",
+		SessionID: "session-1",
 		Platform:  "web",
 	}
 }
@@ -37,7 +37,7 @@ func containsField(errs []eventmap.FieldError, field string) bool {
 func TestAuthSignup_Validate_RejectsMissingTenantID(t *testing.T) {
 	req := user.AuthSignupRequest{
 		Context: user.UserContext{Platform: "web"},
-		Method:  "email",
+		Method:  stringp("email"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "context.tenant_id") {
@@ -48,7 +48,7 @@ func TestAuthSignup_Validate_RejectsMissingTenantID(t *testing.T) {
 func TestAuthSignup_Validate_RejectsBadMethod(t *testing.T) {
 	req := user.AuthSignupRequest{
 		Context: validUserContext(),
-		Method:  "fax",
+		Method:  stringp("fax"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "method") {
@@ -59,7 +59,7 @@ func TestAuthSignup_Validate_RejectsBadMethod(t *testing.T) {
 func TestAuthSignup_Validate_AcceptsValid(t *testing.T) {
 	req := user.AuthSignupRequest{
 		Context: validUserContext(),
-		Method:  "google",
+		Method:  stringp("google"),
 	}
 	if errs := req.Validate(); len(errs) != 0 {
 		t.Fatalf("expected no errors, got %+v", errs)
@@ -70,7 +70,7 @@ func TestAuthSignup_ToProto_FillsEnvelope(t *testing.T) {
 	before := time.Now().UTC().Add(-time.Second)
 	req := user.AuthSignupRequest{
 		Context: validUserContext(),
-		Method:  "apple",
+		Method:  stringp("apple"),
 		Plan:    "enterprise",
 	}
 	envelope := req.ToProto()
@@ -100,7 +100,7 @@ func TestAuthSignup_ToProto_FillsEnvelope(t *testing.T) {
 func TestAuthSignup_ToProto_RoundTrip(t *testing.T) {
 	req := user.AuthSignupRequest{
 		Context: validUserContext(),
-		Method:  "email",
+		Method:  stringp("email"),
 		Plan:    "starter",
 	}
 	env := req.ToProto()
@@ -116,7 +116,7 @@ func TestAuthSignup_ToProto_RoundTrip(t *testing.T) {
 		t.Errorf("EventName: got %q want %q", got.GetEventName(), user.AuthSignupV1)
 	}
 	if got.GetContext().GetTenantId() != "tenant-1" {
-		t.Errorf("TenantId: %q", got.GetContext().GetTenantId())
+		t.Errorf("TenantID: %q", got.GetContext().GetTenantId())
 	}
 	if got.GetProperties().GetPlan() != "starter" {
 		t.Errorf("Plan: %q", got.GetProperties().GetPlan())
@@ -131,7 +131,7 @@ func TestAuthSignup_ToProto_RoundTrip(t *testing.T) {
 func TestAuthLogin_Validate_RejectsMissingSuccess(t *testing.T) {
 	req := user.AuthLoginRequest{
 		Context: validUserContext(),
-		Method:  "email",
+		Method:  stringp("email"),
 		// Success omitted (nil)
 	}
 	errs := req.Validate()
@@ -144,7 +144,7 @@ func TestAuthLogin_Validate_AcceptsSuccessFalse(t *testing.T) {
 	f := false
 	req := user.AuthLoginRequest{
 		Context: validUserContext(),
-		Method:  "email",
+		Method:  stringp("email"),
 		Success: &f,
 	}
 	if errs := req.Validate(); len(errs) != 0 {
@@ -156,7 +156,7 @@ func TestAuthLogin_Validate_AcceptsSuccessTrue(t *testing.T) {
 	tr := true
 	req := user.AuthLoginRequest{
 		Context: validUserContext(),
-		Method:  "email",
+		Method:  stringp("email"),
 		Success: &tr,
 	}
 	if errs := req.Validate(); len(errs) != 0 {
@@ -184,7 +184,7 @@ func TestCartCheckout_Validate_RejectsMissingCartID(t *testing.T) {
 		Context:       validUserContext(),
 		ItemCount:     int64p(1),
 		SubtotalCents: int64p(100),
-		Currency:      "USD",
+		Currency:      stringp("USD"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "cart_id") {
@@ -198,7 +198,7 @@ func TestCartCheckout_Validate_RejectsBadCurrency(t *testing.T) {
 		CartID:        stringp("cart-1"),
 		ItemCount:     int64p(1),
 		SubtotalCents: int64p(100),
-		Currency:      "BTC",
+		Currency:      stringp("BTC"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "currency") {
@@ -211,7 +211,7 @@ func TestCartCheckout_Validate_RejectsMissingItemCount(t *testing.T) {
 		Context:       validUserContext(),
 		CartID:        stringp("cart-1"),
 		SubtotalCents: int64p(100),
-		Currency:      "USD",
+		Currency:      stringp("USD"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "item_count") {
@@ -224,7 +224,7 @@ func TestCartCheckout_Validate_RejectsMissingSubtotalCents(t *testing.T) {
 		Context:   validUserContext(),
 		CartID:    stringp("cart-1"),
 		ItemCount: int64p(1),
-		Currency:  "USD",
+		Currency:  stringp("USD"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "subtotal_cents") {
@@ -238,7 +238,7 @@ func TestCartCheckout_ToProto_RoundTrip(t *testing.T) {
 		CartID:        stringp("cart-42"),
 		ItemCount:     int64p(7),
 		SubtotalCents: int64p(1999),
-		Currency:      "GBP",
+		Currency:      stringp("GBP"),
 	}
 	env := req.ToProto()
 	wire, err := proto.Marshal(env)
@@ -268,9 +268,9 @@ func TestCartCheckout_ToProto_RoundTrip(t *testing.T) {
 func TestCartPurchase_Validate_RejectsMissingOrderID(t *testing.T) {
 	req := user.CartPurchaseRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-1",
-		TotalCents:    100,
-		PaymentMethod: "card",
+		CartID:        stringp("cart-1"),
+		TotalCents:    int64p(100),
+		PaymentMethod: stringp("card"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "order_id") {
@@ -281,10 +281,10 @@ func TestCartPurchase_Validate_RejectsMissingOrderID(t *testing.T) {
 func TestCartPurchase_Validate_RejectsBadPaymentMethod(t *testing.T) {
 	req := user.CartPurchaseRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-1",
-		OrderID:       "order-1",
-		TotalCents:    100,
-		PaymentMethod: "bitcoin",
+		CartID:        stringp("cart-1"),
+		OrderID:       stringp("order-1"),
+		TotalCents:    int64p(100),
+		PaymentMethod: stringp("bitcoin"),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "payment_method") {
@@ -295,10 +295,10 @@ func TestCartPurchase_Validate_RejectsBadPaymentMethod(t *testing.T) {
 func TestCartPurchase_ToProto_RoundTrip(t *testing.T) {
 	req := user.CartPurchaseRequest{
 		Context:       validUserContext(),
-		CartID:        "cart-9",
-		OrderID:       "order-9",
-		TotalCents:    9999,
-		PaymentMethod: "apple_pay",
+		CartID:        stringp("cart-9"),
+		OrderID:       stringp("order-9"),
+		TotalCents:    int64p(9999),
+		PaymentMethod: stringp("apple_pay"),
 		CouponCode:    "WELCOME",
 	}
 	env := req.ToProto()
@@ -329,8 +329,8 @@ func TestCartPurchase_ToProto_RoundTrip(t *testing.T) {
 func TestCartItemAdded_Validate_RejectsMissingSKU(t *testing.T) {
 	req := user.CartItemAddedRequest{
 		Context:  validUserContext(),
-		CartID:   "cart-1",
-		Quantity: 1,
+		CartID:   stringp("cart-1"),
+		Quantity: int64p(1),
 	}
 	errs := req.Validate()
 	if !containsField(errs, "sku") {
@@ -341,9 +341,9 @@ func TestCartItemAdded_Validate_RejectsMissingSKU(t *testing.T) {
 func TestCartItemAdded_ToProto_RoundTrip(t *testing.T) {
 	req := user.CartItemAddedRequest{
 		Context:  validUserContext(),
-		CartID:   "cart-1",
-		SKU:      "SKU-999",
-		Quantity: 3,
+		CartID:   stringp("cart-1"),
+		SKU:      stringp("SKU-999"),
+		Quantity: int64p(3),
 	}
 	env := req.ToProto()
 	wire, err := proto.Marshal(env)
