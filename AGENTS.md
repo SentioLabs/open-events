@@ -2,7 +2,7 @@
 
 This repository is **OpenEvents**, a spec-first event taxonomy compiler written in Go. The MVP validates Git-backed YAML event registries and produces a deterministic normalized model.
 
-These instructions apply to the entire repository.
+These instructions apply to the **compiler** codebase (`cmd/`, `internal/`). The standalone exemplar application under `examples/demo/` has its own agent instructions at `examples/demo/CLAUDE.md`; agents working only in `internal/` should not need to know the demo exists.
 
 ## Work Tracking
 
@@ -25,9 +25,10 @@ Use arc for multi-session work, dependencies, bugs, discovered follow-ups, and a
 - CLI entrypoint: `cmd/openevents/main.go`
 - CLI implementation: `internal/cli/`
 - Registry loading, validation, diagnostics, and model types: `internal/registry/`
-- Example registries: `examples/basic/` and `examples/demo/`
-- End-to-end demo (Go API + Python consumer): `examples/demo/services/api/` and `examples/demo/services/consumer/`. These are standalone modules (own `go.mod` / `pyproject.toml`) and are NOT exercised by repo-root `go test ./...`. See `examples/demo/README.md`.
-- Generated proto + language bindings land under `_build/demo-proto/` (gitignored). Run `make -C examples/demo gen` to rebuild.
+- Schemair (lock model, lock update/check, registry → IR lowering): `internal/schemair/`
+- Per-language emitters: `internal/codegen/golang/`, `internal/codegen/python/`
+- Protobuf emitter: `internal/protogen/`
+- Integration tests: `internal/integration/`
 
 ## Development Commands
 
@@ -35,14 +36,13 @@ Run commands from the repository root.
 
 ```bash
 go test ./...
-go run ./cmd/openevents validate ./examples/basic
-go run ./cmd/openevents validate ./examples/demo
+go run ./cmd/openevents validate ./examples/demo/registry
 ```
 
 Expected successful validation output is similar to:
 
 ```text
-ok: registry valid (2 events, 3 context fields)
+ok: registry valid (12 events across 2 domains)
 ```
 
 Before committing Go changes, run `gofmt` on modified Go files and then `go test ./...`.
