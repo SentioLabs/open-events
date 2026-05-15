@@ -3,3 +3,5 @@ _build/
 __pycache__/
 *.pyc
 .pytest_cache/
+# uv editable-install side-effect under gen/python/; we don't ship it.
+*.egg-info/

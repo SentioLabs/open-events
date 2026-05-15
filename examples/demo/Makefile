@@ -25,13 +25,17 @@ gen:
 	cd $(REPO_ROOT) && go run ./cmd/openevents validate $(REGISTRY)
 	cd $(REPO_ROOT) && go run ./cmd/openevents lock check $(REGISTRY)
 	rm -rf $(PROTO_ROOT)
-	rm -rf $(GEN_GO) $(GEN_PYTHON)
+	# Clear only the generated proto trees so committed package metadata
+	# (gen/go/go.mod, gen/go/go.sum, gen/python/pyproject.toml) survives.
+	# Keeps `git clone && make` reproducible — see `examples/demo/CLAUDE.md`.
+	rm -rf $(GEN_GO)/com $(GEN_PYTHON)/com
 	cd $(REPO_ROOT) && go run ./cmd/openevents generate $(REGISTRY)
 	cd $(REPO_ROOT) && bash scripts/install-buf.sh
-	# Re-init gen/go/go.mod after `rm -rf $(GEN_GO)` blew it away. The proto
-	# Go module lives at examples/demo/gen/go and is referenced via go.mod
-	# replace directives from services/api.
-	mkdir -p $(GEN_GO) && cp $(DEMO_ROOT)/gen-go.mod.template $(GEN_GO)/go.mod
+	# Bootstrap gen/go/go.mod from the template only when missing (e.g.,
+	# after `make clean`). On a fresh checkout it's already committed.
+	@if [ ! -f $(GEN_GO)/go.mod ]; then \
+		mkdir -p $(GEN_GO) && cp $(DEMO_ROOT)/gen-go.mod.template $(GEN_GO)/go.mod; \
+	fi
 	cd $(DEMO_ROOT) && PATH="$(REPO_ROOT)/.tools/bin:$$PATH" $(REPO_ROOT)/.tools/bin/buf generate
 	bash $(DEMO_ROOT)/scripts/postgen.sh $(GEN_PYTHON)
 
@@ -58,6 +62,7 @@ consumer:
 	cd services/consumer && uv run python -m consumer
 
 demo:
+	rm -rf $(PARQUET_OUT)
 	bash scripts/demo.sh
 
 verify:
