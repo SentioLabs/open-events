@@ -59,7 +59,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", specifier = ">=1.34" },
-    { name = "openevents-demo-pb2", editable = "../../registry/.openevents/proto/gen/python" },
+    { name = "openevents-demo-pb2", editable = "../../gen/python" },
     { name = "polars", specifier = ">=1.0,<2" },
     { name = "protobuf", specifier = ">=5.0" },
 ]
@@ -91,7 +91,7 @@ wheels = [
 [[package]]
 name = "openevents-demo-pb2"
 version = "0.0.0"
-source = { editable = "../../registry/.openevents/proto/gen/python" }
+source = { editable = "../../gen/python" }
 dependencies = [
     { name = "protobuf" },
 ]
